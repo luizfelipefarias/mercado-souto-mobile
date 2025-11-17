@@ -1,15 +1,15 @@
 
-
-### 📋 Guia: Como Rodar o projeto mercado-souto-mobile 
+### 📋 Guia: Como Rodar o projeto `mercado-souto-mobile`
 
 Este guia assume que você está em um computador que já tem o ambiente de desenvolvimento configurado.
 
 ### 1\. ⚙️ Pré-requisitos (O que você precisa ter)
 
-Antes de tudo, garanta que você tem estas duas coisas instaladas:
+Antes de tudo, garanta que você tem estas três coisas instaladas:
 
 1.  **Node.js:** Essencial para rodar o Expo. (Versão LTS é recomendada).
-2.  **Expo Go (App no Celular):** Se você quiser testar no seu celular (iOS ou Android), baixe o app "Expo Go" na sua loja de aplicativos.
+2.  **Git:** O programa para "clonar" (baixar) seu projeto do GitHub.
+3.  **Expo Go (App no Celular):** Se você quiser testar no seu celular (iOS ou Android), baixe o app "Expo Go" na sua loja de aplicativos.
 
 -----
 
@@ -17,23 +17,39 @@ Antes de tudo, garanta que você tem estas duas coisas instaladas:
 
 Siga estes comandos no seu terminal.
 
-#### Passo 1: Abrir o Terminal
+#### Passo 1: Abrir o Terminal e Navegar
 
-Abra o seu terminal (CMD, PowerShell, zsh, etc.).
-
-#### Passo 2: Navegar até a Pasta do Projeto
-
-Você precisa "entrar" na pasta do seu projeto. Pelo seu log anterior, o caminho é parecido com este:
+Abra seu terminal e navegue até a pasta onde você guarda seus projetos (como `Documentos/Git`, por exemplo).
 
 ```bash
-cd ~/Documentos/Git/mercado-souto-app
+# Exemplo: navegando para a pasta 'Git' dentro de 'Documentos'
+cd ~/Documentos/Git
 ```
 
-*(Ajuste o caminho se ele for diferente)*.
+#### Passo 2: Clonar o Projeto do GitHub (O Novo Passo)
 
-#### Passo 3: Instalar as Dependências (Muito Importante)
+Este comando vai baixar uma cópia exata do seu projeto do GitHub para o seu computador.
 
-Se você baixou o projeto (ou se é a primeira vez rodando), você **precisa** instalar todas as "peças" (pacotes) que ele usa.
+**Substitua `[URL_DO_SEU_REPO_NO_GITHUB]`** pela URL do seu repositório. (Você pega ela no botão verde "Code" lá no GitHub).
+
+```bash
+git clone [URL_DO_SEU_REPO_NO_GITHUB] mercado-souto-app
+```
+
+  * O comando `git clone` baixa o projeto.
+  * `mercado-souto-app` é o nome que a pasta terá no seu computador.
+
+#### Passo 3: Entrar na Pasta do Projeto
+
+Agora que o projeto foi baixado, entre na pasta que acabamos de criar:
+
+```bash
+cd mercado-souto-app
+```
+
+#### Passo 4: Instalar as Dependências (Muito Importante)
+
+Você **precisa** instalar todas as "peças" (pacotes) que o projeto usa.
 
 ```bash
 npm install
@@ -41,7 +57,7 @@ npm install
 
 *(Este comando lê o `package.json` e baixa tudo o que está listado ali, como o Expo, React, Tailwind, etc.)*
 
-#### Passo 4: Iniciar o Servidor do Expo
+#### Passo 5: Iniciar o Servidor do Expo
 
 Este é o comando principal. Ele "liga" o seu app.
 
@@ -55,7 +71,7 @@ npx expo start -c
 
 ### 3\. 📱 Escolher Onde Rodar
 
-Depois do Passo 4, seu terminal vai mudar e mostrar um **QR Code** e várias opções, assim:
+Depois do Passo 5, seu terminal vai mudar e mostrar um **QR Code** e várias opções:
 
 ```
 › Metro waiting on...
@@ -102,5 +118,5 @@ Agora você escolhe:
       * **Causa:** O servidor do Expo não lida bem com refresh (F5) em telas que não são a principal.
       * **Solução:** Para testar, sempre volte para a tela inicial (`http://localhost:8081/`) e navegue pelo app usando os botões, em vez de dar F5.
   * **"Não achou o módulo 'react-native-safe-area-context' (ou outro)"**
-      * **Causa:** Você pulou o Passo 3.
+      * **Causa:** Você pulou o Passo 4 (`npm install`).
       * **Solução:** Pare o servidor (`Ctrl + C`) e rode `npm install`.
