@@ -33,7 +33,7 @@ Este comando vai baixar uma cópia exata do seu projeto do GitHub para o seu com
 **Substitua `[URL_DO_SEU_REPO_NO_GITHUB]`** pela URL do seu repositório. (Você pega ela no botão verde "Code" lá no GitHub).
 
 ```bash
-git clone [URL_DO_SEU_REPO_NO_GITHUB] mercado-souto-app
+git clone [https://github.com/luizfelipefarias/mercado-souto-mobile.git] mercado-souto-app
 ```
 
   * O comando `git clone` baixa o projeto.
