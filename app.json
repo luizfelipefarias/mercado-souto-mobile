@@ -1,17 +1,18 @@
 {
   "expo": {
-    "name": "starter-kit-expo",
+    "name": "Mercado-Souto-App",
     "slug": "starter-kit-expo",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/icon.png",
+    "icon": "./assets/images/logoMercadoSouto.png",
     "scheme": "starterkitexpo",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "splash": {
       "image": "./assets/images/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#6366F1"
+      
     },
     "ios": {
       "supportsTablet": true
@@ -23,11 +24,18 @@
       },
       "edgeToEdgeEnabled": true
     },
+
     "web": {
       "bundler": "metro",
       "output": "static",
-      "favicon": "./assets/images/favicon.png"
+      "favicon": "./assets/images/favicon.png",
+
+      "dangerous": {
+        "disableReactNativeAccessibilityImage": true
+      }
+     
     },
+
     "plugins": [
       "expo-router",
       "expo-web-browser",

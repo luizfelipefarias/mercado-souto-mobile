@@ -1,3 +1,89 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* ==========================================
+  TEMA BASE (Modo Claro)
+  ==========================================
+*/
+html,
+body,
+#root { 
+  height: 100%;
+  width: 100%;
+  /* Força o fundo a ser o do seu TEMA (branco no modo claro) */
+  background-color: rgb(var(--color-background-0));
+}
+:root {
+  /* SUA MARCA (MERCADO SOUTO)
+    primary = Azul
+    secondary = Amarelo
+  */
+  --color-primary-500: 0 45 114; /* #6366F1  */
+  --color-secondary-500: 244 201 71; /* #F4C947  */
+
+  /* FUNDOS
+    0 = Fundo principal
+    50 = Fundo sutil 
+  */
+  --color-background-0: 255 255 255; /* #FFFFFF  */
+  --color-background-50: 249 250 251; /* #F9FAFB */
+
+  /* TEXTOS
+    900 = Cor principal (preto)
+    700 = Cor secundária (cinza)
+    500 = Cor sutil (cinza claro)
+  */
+  --color-typography-900: 17 24 39; /* #111827 (Quase preto) */
+  --color-typography-700: 55 65 81; /* #374151 (Cinza escuro) */
+  --color-typography-500: 107 114 128; /* #6B7280 (Cinza) */
+
+  /* BORDAS (OUTLINE)
+    300 = Borda padrão 
+    500 = Borda com foco
+  */
+
+  --color-primary-500: 99 102 241; /* #6366F1 (Roxo) */
+  --color-secondary-500: 244 201 71; /* #F4C947 (Amarelo) */
+ 
+  
+  --color-outline-500: 99 102 241; /* #6366F1 (Roxo, para foco)
+  --color-outline-300: 209 213 219; /* #D1D5DB (Cinza claro) */
+  --color-outline-500: 0 45 114; /* #6366F1, (Seu Azul, para foco) */
+  
+  /* Cores de Feedback  */
+  --color-success-500: 22 163 74; /* #16A34A (Verde) */
+  --color-error-500: 220 38 38; /* #DC2626 (Vermelho) */
+}
+
+/* ==========================================
+  TEMA ESCURO (Dark Mode)
+  ==========================================
+*/
+.dark {
+  /* Sua Marca */
+  --color-primary-500: 0 45 114; /* #6366F1',(Azul) */
+  --color-secondary-500: 244 201 71; /* #F4C947 ( Amarelo) */
+
+  /* Fundos */
+  --color-background-0: 17 24 39; /* #111827 (Fundo escuro) */
+  --color-background-50: 31 41 55; /* #1F2937 (Fundo sutil escuro) */
+
+  /* Textos */
+  --color-typography-900: 249 250 251; /* #F9FAFB (Branco) */
+  --color-typography-700: 209 213 219; /* #D1D5DB (Cinza claro) */
+  --color-typography-500: 156 163 175; /* #9CA3AF (Cinza) */
+
+  /* Bordas */
+  --color-outline-300: 55 65 81; /* #374151 (Borda escura) */
+  --color-outline-500: 0 45 114; /*'#6366F1', (Seu Azul, para foco) */
+}
+img[class^="css-accessibilityImage"],
+img[class*="css-accessibilityImage"] {
+  display: none !important;
+  visibility: hidden !important;
+  width: 0 !important;
+  height: 0 !important;
+  pointer-events: none !important;
+  position: static !important;
+}
