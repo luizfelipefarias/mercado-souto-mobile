@@ -1,44 +1,72 @@
 import React from 'react';
-import { View, Text, Image, TouchableOpacity, StyleSheet, Dimensions } from 'react-native';
+import { 
+  View, 
+  Text, 
+  Image, 
+  TouchableOpacity, 
+  StyleSheet, 
+  Dimensions, 
+  Platform, 
+  ViewStyle  
+} from 'react-native';
 import { Link } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
+
+const COLORS = {
+  primary: '#4F46E5', 
+  text: '#1F2937',    
+  subtext: '#6B7280', 
+  background: '#FFFFFF',
+  border: '#E5E7EB',
+};
+
+const SPACING = 24;
+const PADDING_HORIZONTAL = SPACING;
+
+const containerHeight = (Platform.OS === 'web' 
+    ? { minHeight: '100vh' } 
+    : { flex: 1 }) as ViewStyle; 
 
 export default function WelcomeScreen() {
   const insets = useSafeAreaInsets();
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
+
+    <View style={[styles.container, containerHeight]}>
       
-      
-      <View style={styles.content}>
-        <View style={styles.innerContent}>
-          <Image
-            source={require('../../../assets/images/van.png')}
-            style={styles.image}
-            resizeMode="contain"
-          />
-          <Text style={styles.title}>
-            Frete grátis e entrega em menos de 24 horas
-          </Text>
-          <Text style={styles.subtitle}>
-            Aproveite a experiência de comprar com rapidez e segurança!
-          </Text>
+      <View style={[styles.contentWrapper, { paddingTop: insets.top }]}>
+        <View style={styles.content}>
+          <View style={styles.innerContent}>
+            <Image
+              source={require('../../../assets/images/van.png')}
+              style={styles.image}
+              resizeMode="contain"
+            />
+            <Text style={styles.title}>
+              Frete grátis e
+              entrega em menos de 24 horas
+            </Text>
+            <Text style={styles.subtitle}>
+              Aproveite a experiência
+              de comprar com rapidez e segurança!
+            </Text>
+          </View>
         </View>
       </View>
 
-      
-      <View style={[styles.footer, { paddingBottom: insets.bottom || 24 }]}>
+      <View style={[styles.footer, { paddingBottom: insets.bottom || SPACING }]}>
         <Link href="/auth/login" asChild>
-          <TouchableOpacity style={styles.button}>
-            <Text style={styles.buttonText}>Iniciar sessão</Text>
+          <TouchableOpacity style={styles.buttonPrimary}>
+            <Text style={styles.buttonTextPrimary}>Iniciar sessão</Text>
           </TouchableOpacity>
         </Link>
 
         <Link href="/auth/cadastro" asChild>
-          <TouchableOpacity style={styles.button}>
-            <Text style={styles.buttonText}>Criar conta</Text>
+          <TouchableOpacity style={styles.buttonSecondary}>
+            <Text style={styles.buttonTextSecondary}>Criar conta</Text>
           </TouchableOpacity>
         </Link>
       </View>
@@ -47,59 +75,83 @@ export default function WelcomeScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#fff' },
+  container: {
+    backgroundColor: COLORS.background,
+  },
+  
+  contentWrapper: {
+      flex: 1, 
+      paddingHorizontal: PADDING_HORIZONTAL,
+  },
 
   content: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 10,
   },
 
   innerContent: {
     alignItems: 'center',
+    gap: 16, 
   },
 
   image: {
-    width: SCREEN_WIDTH * 0.6,  
-    aspectRatio: 1.2,           
-  },
+  width: SCREEN_WIDTH * 1.0, 
+  height: 500, 
+  marginVertical: SPACING * 0.5, 
+},
 
   title: {
-    fontSize: 24,
+    fontSize: 26, 
     fontWeight: '700',
-    color: '#111827',
+    color: COLORS.text,
     textAlign: 'center',
-    marginBottom: 8,
+    lineHeight: 30, 
+    paddingHorizontal: 3,
   },
 
   subtitle: {
-    fontSize: 16,
-    color: '#6B7280',
+    fontSize: 14,
+    color: COLORS.subtext,
     textAlign: 'center',
   },
 
   footer: {
-    paddingHorizontal: 24,
-    paddingTop: 12,
-    backgroundColor: '#fff',
+    paddingHorizontal: PADDING_HORIZONTAL,
+    paddingTop: SPACING,
+    backgroundColor: COLORS.background,
     borderTopWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: COLORS.border,
+    gap: 12, 
   },
 
-  button: {
+  buttonPrimary: {
     width: '100%',
-    backgroundColor: '#6366F1',
+    backgroundColor: COLORS.primary,
     paddingVertical: 16,
     borderRadius: 12,
-    marginBottom: 12,
     alignItems: 'center',
   },
 
-  buttonText: {
-    color: '#fff',
+  buttonTextPrimary: {
+    color: COLORS.background,
     fontWeight: '700',
     fontSize: 18,
-    textAlign: 'center',
+  },
+
+  buttonSecondary: {
+    width: '100%',
+    backgroundColor: 'transparent',
+    paddingVertical: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: COLORS.primary,
+  },
+
+  buttonTextSecondary: {
+    color: COLORS.primary, 
+    fontWeight: '700',
+    fontSize: 18,
   },
 });
