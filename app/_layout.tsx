@@ -1,21 +1,19 @@
 import { Stack } from 'expo-router';
-import { StatusBar } from 'react-native';
-import "../global.css"; 
+import { PaperProvider } from 'react-native-paper';
+import { AuthProvider } from '../context/AuthContext';
+import { theme } from '../constants/theme';
 
 export default function RootLayout() {
   return (
-    <>
-      <StatusBar barStyle="dark-content" />
-      <Stack
-        screenOptions={{
-          headerShown: false, // Esconde o cabeçalho em todas as telas
-        }}
-      >
-        {/* A splash screen (index.tsx) */}
-        <Stack.Screen name="index" /> 
-
-        <Stack.Screen name="(tabs)" /> 
-      </Stack>
-    </>
+    
+    <PaperProvider theme={theme}>
+      <AuthProvider>
+        <Stack screenOptions={{ headerShown: false }}>
+          <Stack.Screen name="index" />
+          <Stack.Screen name="login" />
+          <Stack.Screen name="register" />
+        </Stack>
+      </AuthProvider>
+    </PaperProvider>
   );
 }

@@ -1,41 +1,57 @@
-import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ActivityIndicator, Image } from 'react-native'; 
-import { Redirect } from 'expo-router';
+import { useRouter } from 'expo-router';
+import * as NavigationBar from 'expo-navigation-bar';
+import React, { useEffect } from 'react';
+import { Image, Platform, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { Text } from 'react-native-paper';
+import { theme } from '../constants/theme';
+import { useAndroidNavigationBar } from '../hooks/useAndroidNavigationBar';
 
-// Duração que a tela de carregamento deve ser exibida (em milissegundos)
-const SPLASH_DURATION = 1500; // 1.5 segundos
-
-export default function LoadingScreen() {
-  const [isLoading, setIsLoading] = useState(true);
-
+export default function Welcome() {
+  const router = useRouter();
+useAndroidNavigationBar(true);
   useEffect(() => {
-    // Simula o tempo de carregamento de dados ou inicialização
-    const timer = setTimeout(() => {
-      setIsLoading(false);
-    }, SPLASH_DURATION);
+    if (Platform.OS === 'android') {
+      NavigationBar.setVisibilityAsync('hidden');
+      NavigationBar.setBehaviorAsync('overlay-swipe');
+    }
 
-    return () => clearTimeout(timer); // Limpa o timer ao desmontar
+    return () => {
+      if (Platform.OS === 'android') {
+        NavigationBar.setVisibilityAsync('visible');
+      }
+    };
   }, []);
-
-  // Se o carregamento terminar, redireciona para a tela de boas-vindas
-  if (!isLoading) {
-    // Redireciona para o seu novo arquivo welcome.tsx
-    return <Redirect href="/auth/boas-vindas" />;
-  }
-
 
   return (
     <View style={styles.container}>
-      
- 
-      <Image 
-        source={require('../assets/images/logoMercadoSouto.png')} 
-        style={styles.logoImage}
-        resizeMode="contain"
-      />
-      
-      <ActivityIndicator size="large" color="#6366F1" style={{ marginTop: 20 }} />
-      <Text style={styles.loadingText}>Carregando...</Text>
+      <TouchableOpacity style={styles.guestButton} onPress={() => router.push('/home')}>
+        <Text style={styles.guestText}>Continuar como visitante</Text>
+      </TouchableOpacity>
+
+      <View style={styles.content}>
+        <Image
+          source={require('../assets/img/van-logo.png')}
+          style={styles.vanImage}
+          resizeMode="contain"
+        />
+
+        <Text style={styles.title}>
+          Frete grátis e entrega em menos de 24 horas
+        </Text>
+      </View>
+
+      <View style={styles.footer}>
+        <TouchableOpacity style={styles.btnSecondary} onPress={() => router.push('/login')}>
+          <Text style={styles.btnTextBlue}>Iniciar sessão</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.btnSecondary, { marginTop: 10 }]}
+          onPress={() => router.push('/register')}
+        >
+          <Text style={styles.btnTextBlue}>Criar conta</Text>
+        </TouchableOpacity>
+      </View>
     </View>
   );
 }
@@ -43,24 +59,56 @@ export default function LoadingScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: '#FFF',
+  },
+
+  guestButton: {
+    alignItems: 'center',
+    marginTop: 60,
+    marginBottom: 20,
+  },
+
+  guestText: {
+    color: theme.colors.primary,
+    fontWeight: '500',
+  },
+
+  content: {
+    flex: 1,
+    alignItems: 'center',
     justifyContent: 'center',
+    paddingHorizontal: 40,
+  },
+
+  vanImage: {
+    width: 250,
+    height: 180,
+    marginBottom: 10,
+  },
+
+  title: {
+    textAlign: 'center',
+    color: '#666',
+    fontSize: 16,
+    fontWeight: '400',
+    marginTop: 20,
+  },
+
+  footer: {
+    padding: 20,
+    paddingBottom: 50,
+  },
+
+  btnSecondary: {
+    backgroundColor: '#e3edfb',
+    paddingVertical: 14,
+    borderRadius: 6,
     alignItems: 'center',
   },
-  
-  logoImage: {
-    width: 150, 
-    height: 150, 
-    marginBottom: 20, 
-  },
-  logoText: { 
-    fontSize: 32,
+
+  btnTextBlue: {
+    color: theme.colors.primary,
     fontWeight: 'bold',
-    color: '#111827',
+    fontSize: 15,
   },
-  loadingText: {
-    fontSize: 16,
-    color: '#6B7280',
-    marginTop: 10,
-  }
 });
