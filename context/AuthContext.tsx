@@ -1,12 +1,15 @@
-import React, { createContext, useState, useContext, useEffect, ReactNode } from 'react';
-import { Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { router } from 'expo-router';
+import { useRouter } from 'expo-router';
+import React, { createContext, ReactNode, useContext, useEffect, useState, useCallback } from 'react';
+import { Alert } from 'react-native';
 import api from '../services/api';
 
 type User = {
+  id?: number;
+  name?: string;
   email: string;
   token: string;
+  isGuest?: boolean;
 };
 
 interface AuthContextData {
@@ -15,29 +18,42 @@ interface AuthContextData {
   loading: boolean;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (clientData: any) => Promise<void>;
+  loginAsGuest: () => Promise<void>;
   signOut: () => Promise<void>;
-}
-
-interface AuthProviderProps {
-  children: ReactNode;
+  setUser: React.Dispatch<React.SetStateAction<User | null>>;
 }
 
 const AuthContext = createContext<AuthContextData>({} as AuthContextData);
 
-export const AuthProvider = ({ children }: AuthProviderProps) => {
+export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const router = useRouter();
 
- 
+  const signOut = useCallback(async () => {
+    try {
+      await AsyncStorage.multiRemove(['@MLToken', '@MLUser']);
+      api.defaults.headers.Authorization = null;
+      setUser(null);
+      router.replace('/');
+    } catch (error) {
+      console.log("Erro ao sair:", error);
+    }
+  }, [router]); 
+
   useEffect(() => {
     async function loadStorageData() {
       try {
         const storageToken = await AsyncStorage.getItem('@MLToken');
         const storageUser = await AsyncStorage.getItem('@MLUser');
 
-        if (storageToken && storageUser) {
-          api.defaults.headers.Authorization = `Bearer ${storageToken}`;
-          setUser(JSON.parse(storageUser));
+        if (storageUser) {
+          const parsedUser = JSON.parse(storageUser);
+          setUser(parsedUser);
+
+          if (storageToken && !parsedUser.isGuest) {
+            api.defaults.headers.Authorization = `Bearer ${storageToken}`;
+          }
         }
       } catch (error) {
         console.log("Erro ao carregar sessão:", error);
@@ -47,80 +63,129 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     }
 
     loadStorageData();
-  }, []);
+  }, []); 
 
- 
+  useEffect(() => {
+    const interceptorId = api.interceptors.response.use(
+      (response) => response,
+      async (error) => {
+        if (user?.isGuest) {
+          return Promise.reject(error);
+        }
+
+        const errorMessage = error.response?.data;
+        const isTokenExpired = 
+          (typeof errorMessage === 'string' && errorMessage.includes('JWT expired')) ||
+          error.response?.status === 401 ||
+          error.response?.status === 403;
+
+        if (isTokenExpired) {
+          console.log("Sessão expirada. Deslogando usuário...");
+          
+          if (user) { 
+            Alert.alert("Sessão Expirada", "Por favor, faça login novamente.");
+            await signOut();
+          }
+        }
+        return Promise.reject(error);
+      }
+    );
+
+    return () => {
+      api.interceptors.response.eject(interceptorId);
+    };
+  }, [user, signOut]);
+
   const signIn = async (email: string, password: string) => {
     setLoading(true);
     try {
-      console.log("Tentando logar com:", { username: email, password: password });
-
       const response = await api.post('/api/login', {
         username: email, 
         password: password
-      }, {
-        headers: {
-          'Content-Type': 'application/json' 
-        }
       });
-
-      console.log("Resposta do servidor:", response.data);
 
       const token = response.data.token || response.data;
       
-      if (!token) throw new Error("Token não recebido");
+      if (!token || typeof token !== 'string') {
+        throw new Error("Token inválido recebido da API");
+      }
 
       api.defaults.headers.Authorization = `Bearer ${token}`;
       
-      const userData: User = { email, token };
+      const userData: User = { 
+        email, 
+        token,
+        id: 1,
+        name: 'Usuário',
+        isGuest: false
+      };
 
       await AsyncStorage.setItem('@MLToken', token);
       await AsyncStorage.setItem('@MLUser', JSON.stringify(userData));
 
       setUser(userData);
-      router.replace('/'); 
+      router.replace('/(tabs)/home');
 
     } catch (error: any) {
-      console.log('Erro detalhado:', error.response?.data || error.message);
-      
-      if (error.response?.status === 500) {
-        Alert.alert('Erro 500', 'Erro interno do servidor. Verifique se o usuário existe.');
-      } else {
-        Alert.alert('Falha na autenticação', 'Verifique seu e-mail e senha.');
-      }
+      console.log('Erro no login:', error);
+      Alert.alert('Erro', 'Usuário ou senha inválidos.');
     } finally {
       setLoading(false);
     }
   };
 
- 
   const signUp = async (clientData: any) => {
     setLoading(true);
     try {
       await api.post('/api/client', clientData);
-      Alert.alert('Sucesso', 'Conta criada com sucesso! Faça login.');
-      router.back();
+      Alert.alert('Sucesso', 'Conta criada! Faça login.');
+      router.back(); 
     } catch (error) {
-      console.log('Erro no Cadastro:', error);
-      Alert.alert('Erro', 'Verifique os dados e tente novamente.');
+      console.log('Erro no cadastro:', error);
+      Alert.alert('Erro', 'Não foi possível criar a conta.');
     } finally {
       setLoading(false);
     }
   };
 
-  const signOut = async () => {
-    await AsyncStorage.removeItem('@MLToken');
-    await AsyncStorage.removeItem('@MLUser');
-    setUser(null);
-    api.defaults.headers.Authorization = null;
-    router.replace('/login');
+  const loginAsGuest = async () => {
+    setLoading(true);
+    try {
+      const guestUser: User = {
+        id: 0,
+        name: 'Visitante',
+        email: 'guest@mercado.souto',
+        token: 'guest-token',
+        isGuest: true,
+      };
+
+      await AsyncStorage.setItem('@MLUser', JSON.stringify(guestUser));
+      
+      setUser(guestUser);
+      api.defaults.headers.Authorization = null;
+
+      router.replace('/(tabs)/home');
+    } catch (error) {
+      console.log('Erro ao entrar como visitante', error);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
-    <AuthContext.Provider value={{ signed: !!user, user, signIn, signUp, signOut, loading }}>
+    <AuthContext.Provider value={{ 
+      signed: !!user, 
+      user, 
+      signIn, 
+      signUp, 
+      loginAsGuest, 
+      signOut, 
+      loading,
+      setUser 
+    }}>
       {children}
     </AuthContext.Provider>
   );
-};
+}
 
 export const useAuth = () => useContext(AuthContext);

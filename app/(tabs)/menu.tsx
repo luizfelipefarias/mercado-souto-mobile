@@ -1,7 +1,7 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as NavigationBar from 'expo-navigation-bar';
 import { useRouter } from 'expo-router';
-import React, { useEffect } from 'react';
+import React, { useCallback, useEffect, useMemo } from 'react';
 import {
   Alert,
   Platform,
@@ -11,16 +11,19 @@ import {
   StyleSheet,
   TouchableOpacity,
   View,
+  Image 
 } from 'react-native';
 import { Text } from 'react-native-paper';
-import { theme } from '../constants/theme';
-import { useAuth } from '../context/AuthContext';
-import { useAndroidNavigationBar } from '../hooks/useAndroidNavigationBar';
+import { theme } from '../../constants/theme';
+import { useAuth } from '../../context/AuthContext';
+import { useAndroidNavigationBar } from '../../hooks/useAndroidNavigationBar';
 
 export default function Menu() {
   const router = useRouter();
   const { signOut, user } = useAuth();
+
   useAndroidNavigationBar(true);
+
   useEffect(() => {
     if (Platform.OS === 'android') {
       NavigationBar.setVisibilityAsync('hidden');
@@ -34,7 +37,7 @@ export default function Menu() {
     };
   }, []);
 
-  const handleLogout = () => {
+  const handleLogout = useCallback(() => {
     Alert.alert('Sair', 'Tem certeza que deseja sair?', [
       { text: 'Cancelar', style: 'cancel' },
       {
@@ -43,25 +46,40 @@ export default function Menu() {
         onPress: async () => {
           try {
             await signOut();
-          } catch (error) {
-            console.log('Erro ao sair', error);
+            router.replace('/login' as any);
+          } catch {
+            Alert.alert('Erro ao sair');
           }
         },
       },
     ]);
-  };
+  }, [router, signOut]);
 
-  const menuOptions = [
-    { label: 'Início', icon: 'home-outline', route: '/home' },
-    { label: 'Buscar', icon: 'magnify', action: () => Alert.alert('Busca', 'Abrir busca') },
-    { label: 'Minhas compras', icon: 'shopping-outline', route: '/my-purchases' },
-    { label: 'Favoritos', icon: 'heart-outline', route: '/favorites' },
-    { label: 'Ofertas', icon: 'tag-outline' },
-    { label: 'Mercado Play', icon: 'play-box-outline' },
-    { label: 'Histórico', icon: 'clock-outline' },
-    { label: 'Minha conta', icon: 'account-outline', route: '/profile' },
-    { label: 'Ajuda', icon: 'help-circle-outline' },
-  ];
+  const handleNavigate = useCallback(
+    (route?: string) => {
+      if (route) {
+        router.push(route as any);
+      } else {
+        Alert.alert('Em breve');
+      }
+    },
+    [router]
+  );
+
+  const menuOptions = useMemo(
+    () => [
+      { label: 'Início', icon: 'home-outline', route: '/home' },
+      { label: 'Buscar', icon: 'magnify', route: '/search' },
+      { label: 'Minhas compras', icon: 'shopping-outline', route: '/my-purchases' },
+      { label: 'Favoritos', icon: 'heart-outline', route: '/favorites' },
+      { label: 'Ofertas', icon: 'tag-outline', route: '/offers' },
+      { label: 'Mercado Play', icon: 'play-box-outline', route: '/mercado-play' },
+      { label: 'Histórico', icon: 'clock-outline', route: '/history' },
+      { label: 'Minha conta', icon: 'account-outline', route: '/profile' },
+      { label: 'Ajuda', icon: 'help-circle-outline', route: '/help' },
+    ],
+    []
+  );
 
   return (
     <View style={styles.container}>
@@ -70,7 +88,6 @@ export default function Menu() {
       <SafeAreaView style={styles.header}>
         <View style={styles.headerContent}>
           <Text style={styles.headerTitle}>Menu</Text>
-
           <TouchableOpacity onPress={() => router.back()}>
             <MaterialCommunityIcons name="close" size={26} color="#333" />
           </TouchableOpacity>
@@ -78,11 +95,18 @@ export default function Menu() {
 
         <View style={styles.userRow}>
           <View style={styles.avatar}>
-            <MaterialCommunityIcons name="account" size={30} color="#ccc" />
+            {(user as any)?.avatar ? (
+              <Image 
+                source={{ uri: (user as any).avatar }} 
+                style={{ width: 50, height: 50, borderRadius: 25 }} 
+              />
+            ) : (
+              <MaterialCommunityIcons name="account" size={30} color="#ccc" />
+            )}
           </View>
 
           <View>
-            <Text style={styles.userName}>{(user as any)?.name || 'Bem-vindo'}</Text>
+            <Text style={styles.userName}>{(user as any)?.name || 'Visitante'}</Text>
             <Text style={styles.userLevel}>Mercado Pontos</Text>
           </View>
         </View>
@@ -90,17 +114,11 @@ export default function Menu() {
 
       <ScrollView style={{ flex: 1 }}>
         <View style={styles.grid}>
-          {menuOptions.map((item, index) => (
+          {menuOptions.map((item) => (
             <TouchableOpacity
-              key={index}
+              key={item.label}
               style={styles.gridItem}
-              onPress={() => {
-                if (item.route) {
-                  router.push(item.route as any);
-                } else if (item.action) {
-                  item.action();
-                }
-              }}
+              onPress={() => handleNavigate(item.route)}
             >
               <MaterialCommunityIcons
                 name={item.icon as any}
@@ -119,7 +137,6 @@ export default function Menu() {
         </TouchableOpacity>
 
         <Text style={styles.versionText}>Versão 1.0.0</Text>
-
         <View style={{ height: 30 }} />
       </ScrollView>
     </View>
@@ -128,33 +145,28 @@ export default function Menu() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f5f5f5' },
-
   header: {
     backgroundColor: theme.colors.secondary,
     paddingTop: Platform.OS === 'android' ? 30 : 0,
     paddingBottom: 15,
   },
-
   headerContent: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     paddingHorizontal: 20,
     alignItems: 'center',
   },
-
   headerTitle: {
     fontSize: 18,
     fontWeight: 'bold',
     color: '#333',
   },
-
   userRow: {
     flexDirection: 'row',
     paddingHorizontal: 20,
     marginTop: 15,
     alignItems: 'center',
   },
-
   avatar: {
     width: 50,
     height: 50,
@@ -164,24 +176,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginRight: 10,
   },
-
   userName: {
     fontWeight: 'bold',
     fontSize: 16,
     color: '#333',
   },
-
   userLevel: {
     fontSize: 12,
     color: '#333',
   },
-
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     padding: 10,
   },
-
   gridItem: {
     width: '31%',
     backgroundColor: '#fff',
@@ -192,14 +200,12 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     elevation: 1,
   },
-
   gridLabel: {
     marginTop: 10,
     fontSize: 12,
     textAlign: 'center',
     color: '#666',
   },
-
   logoutButton: {
     margin: 20,
     backgroundColor: '#fff',
@@ -209,12 +215,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#eee',
   },
-
   logoutText: {
     color: '#d63031',
     fontWeight: 'bold',
   },
-
   versionText: {
     textAlign: 'center',
     color: '#999',
