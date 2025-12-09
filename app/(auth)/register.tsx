@@ -14,10 +14,11 @@ import { Button, Text, TextInput, HelperText } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as NavigationBar from 'expo-navigation-bar';
 import { useRouter } from 'expo-router';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import GoogleLogo from '../../assets/img/ui/logo-google.svg';
-import { theme } from '../../constants/theme';
-import { useAuth } from '../../context/AuthContext';
+import GoogleLogo from '../../src/assets/img/ui/logo-google.svg';
+import { theme } from '../../src/constants/theme';
+import { useAuth } from '../../src/context/AuthContext';
 
 export default function Register() {
   const { signUp, loading } = useAuth();
@@ -54,7 +55,6 @@ export default function Register() {
     };
   }, []);
 
-  // --- Funções de Máscara ---
   const formatPhone = (value: string) => {
     value = value.replace(/\D/g, '');
     value = value.replace(/^(\d{2})(\d)/g, '($1) $2');
@@ -70,7 +70,6 @@ export default function Register() {
     return value;
   };
 
- 
   const handleChange = (field: string, value: string) => {
     if (errors[field as keyof typeof errors]) {
       setErrors((prev) => ({ ...prev, [field]: '' }));
@@ -122,13 +121,26 @@ export default function Register() {
       const cleanCPF = form.cpf.replace(/\D/g, '');
       const cleanPhone = form.telefone.replace(/\D/g, '');
 
-      await signUp({
+      const response: any = await signUp({
         name: form.nome,
         email: form.email,
         cpf: cleanCPF,
         password: form.password,
         phone: cleanPhone,
       });
+
+      await AsyncStorage.setItem('@user_email', form.email);
+
+      if (response && response.token) {
+        await AsyncStorage.setItem('@auth_token', response.token);
+      }
+
+      if (router.canDismiss()) router.dismissAll();
+
+      setTimeout(() => {
+        // CORREÇÃO: Apontando para a raiz da tab (index.tsx)
+        router.replace('/(tabs)'); 
+      }, 100);
       
     } catch (error: any) {
       console.log('Erro no cadastro:', error);
@@ -145,7 +157,7 @@ export default function Register() {
 
         <View style={styles.logoContainer}>
           <Image
-            source={require('../../assets/img/ui/logo-img.png')}
+            source={require('../../src/assets/img/ui/logo-img.png')}
             style={styles.logoImage}
           />
           <Text style={styles.headerTitle}>

@@ -1,9 +1,10 @@
 import React, { useCallback } from 'react';
-import { View, FlatList, StyleSheet, TouchableOpacity, SafeAreaView, Platform } from 'react-native';
+import { View, FlatList, StyleSheet, TouchableOpacity, SafeAreaView, Platform, StatusBar } from 'react-native';
 import { Text } from 'react-native-paper';
 import { useRouter } from 'expo-router';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { theme } from '../../constants/theme';
+import { theme } from '../../src/constants/theme';
+import { useAndroidNavigationBar } from '../../src/hooks/useAndroidNavigationBar';
 
 const MOCK_NOTIFICATIONS = [
   { id: '1', title: 'Seu pedido chegou!', body: 'O pacote com "Kit Camisetas" foi entregue.', read: false, time: 'Hoje' },
@@ -13,6 +14,8 @@ const MOCK_NOTIFICATIONS = [
 
 export default function Notifications() {
   const router = useRouter();
+  
+  useAndroidNavigationBar(true);
 
   const renderItem = useCallback(({ item }: any) => (
     <TouchableOpacity style={[styles.item, !item.read && styles.unread]}>
@@ -36,15 +39,17 @@ export default function Notifications() {
 
   return (
     <SafeAreaView style={styles.container}>
+      <StatusBar barStyle="dark-content" backgroundColor={theme.colors.secondary} />
+
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()}>
-          <MaterialCommunityIcons name="arrow-left" size={24} />
+        <TouchableOpacity onPress={() => router.back()} style={{ padding: 5 }}>
+          <MaterialCommunityIcons name="arrow-left" size={24} color="#333" />
         </TouchableOpacity>
 
         <Text style={styles.headerTitle}>Notificações</Text>
 
-        <TouchableOpacity>
-          <Text style={{ color: '#333' }}>Limpar</Text>
+        <TouchableOpacity onPress={() => { /* Lógica de limpar */ }}>
+          <Text style={styles.clearText}>Limpar</Text>
         </TouchableOpacity>
       </View>
 
@@ -53,6 +58,12 @@ export default function Notifications() {
         renderItem={renderItem}
         keyExtractor={item => item.id}
         contentContainerStyle={{ paddingBottom: 20 }}
+        ListEmptyComponent={
+            <View style={styles.emptyContainer}>
+                <MaterialCommunityIcons name="bell-sleep-outline" size={60} color="#ccc" />
+                <Text style={styles.emptyText}>Você não tem notificações.</Text>
+            </View>
+        }
       />
     </SafeAreaView>
   );
@@ -66,10 +77,13 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     padding: 15,
     backgroundColor: theme.colors.secondary,
-    alignItems: 'center'
+    alignItems: 'center',
+    elevation: 2,
   },
 
-  headerTitle: { fontSize: 18, fontWeight: '500' },
+  headerTitle: { fontSize: 18, fontWeight: '500', color: '#333' },
+  
+  clearText: { color: '#333', fontSize: 14 },
 
   item: {
     flexDirection: 'row',
@@ -79,19 +93,31 @@ const styles = StyleSheet.create({
     alignItems: 'center'
   },
 
-  unread: { backgroundColor: '#fdfbe7' },
+  unread: { backgroundColor: '#fffdf0' },
 
   iconBox: { marginRight: 15 },
 
-  title: { fontWeight: 'bold', fontSize: 14, marginBottom: 2 },
+  title: { fontWeight: 'bold', fontSize: 14, marginBottom: 2, color: '#333' },
   body: { color: '#666', fontSize: 13 },
   time: { color: '#999', fontSize: 11, marginTop: 4 },
 
   dot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#3483fa',
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: theme.colors.primary,
     marginLeft: 10
+  },
+
+  emptyContainer: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginTop: 100
+  },
+  emptyText: {
+      marginTop: 15,
+      color: '#999',
+      fontSize: 16
   }
 });

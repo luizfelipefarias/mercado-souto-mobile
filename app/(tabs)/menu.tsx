@@ -1,228 +1,227 @@
-import { MaterialCommunityIcons } from '@expo/vector-icons';
-import * as NavigationBar from 'expo-navigation-bar';
-import { useRouter } from 'expo-router';
-import React, { useCallback, useEffect, useMemo } from 'react';
+import React, { useEffect } from 'react';
 import {
-  Alert,
-  Platform,
-  SafeAreaView,
-  ScrollView,
-  StatusBar,
-  StyleSheet,
-  TouchableOpacity,
   View,
-  Image 
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  SafeAreaView,
+  Platform,
+  StatusBar,
+  Image
 } from 'react-native';
-import { Text } from 'react-native-paper';
-import { theme } from '../../constants/theme';
-import { useAuth } from '../../context/AuthContext';
-import { useAndroidNavigationBar } from '../../hooks/useAndroidNavigationBar';
+import { Text, Divider } from 'react-native-paper';
+import { useRouter } from 'expo-router';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { theme } from '../../src/constants/theme';
+import { useAuth } from '../../src/context/AuthContext';
+import { useAndroidNavigationBar } from '../../src/hooks/useAndroidNavigationBar';
 
 export default function Menu() {
   const router = useRouter();
-  const { signOut, user } = useAuth();
+  const { user } = useAuth();
 
   useAndroidNavigationBar(true);
 
-  useEffect(() => {
-    if (Platform.OS === 'android') {
-      NavigationBar.setVisibilityAsync('hidden');
-      NavigationBar.setBehaviorAsync('overlay-swipe');
-    }
-
-    return () => {
-      if (Platform.OS === 'android') {
-        NavigationBar.setVisibilityAsync('visible');
-      }
-    };
-  }, []);
-
-  const handleLogout = useCallback(() => {
-    Alert.alert('Sair', 'Tem certeza que deseja sair?', [
-      { text: 'Cancelar', style: 'cancel' },
-      {
-        text: 'Sair',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            await signOut();
-            router.replace('/login' as any);
-          } catch {
-            Alert.alert('Erro ao sair');
-          }
-        },
-      },
-    ]);
-  }, [router, signOut]);
-
-  const handleNavigate = useCallback(
-    (route?: string) => {
-      if (route) {
+  const handleNavigation = (route: string) => {
+    if (route) {
         router.push(route as any);
-      } else {
-        Alert.alert('Em breve');
-      }
-    },
-    [router]
-  );
+    }
+  };
 
-  const menuOptions = useMemo(
-    () => [
-      { label: 'Início', icon: 'home-outline', route: '/home' },
-      { label: 'Buscar', icon: 'magnify', route: '/search' },
-      { label: 'Minhas compras', icon: 'shopping-outline', route: '/my-purchases' },
-      { label: 'Favoritos', icon: 'heart-outline', route: '/favorites' },
-      { label: 'Ofertas', icon: 'tag-outline', route: '/offers' },
-      { label: 'Mercado Play', icon: 'play-box-outline', route: '/mercado-play' },
-      { label: 'Histórico', icon: 'clock-outline', route: '/history' },
-      { label: 'Minha conta', icon: 'account-outline', route: '/profile' },
-      { label: 'Ajuda', icon: 'help-circle-outline', route: '/help' },
-    ],
-    []
-  );
+  const menuItems = [
+    {
+      title: 'Compras',
+      items: [
+        { label: 'Minhas compras', icon: 'shopping-outline', route: '/(aux)/shop/my-purchases' },
+        { label: 'Favoritos', icon: 'heart-outline', route: '/(tabs)/favorites' },
+        { label: 'Histórico', icon: 'clock-outline', route: '/(aux)/shop/history' },
+      ]
+    },
+    {
+      title: 'Configurações',
+      items: [
+        { label: 'Meu perfil', icon: 'account-outline', route: '/(aux)/account/profile' },
+        { label: 'Endereços', icon: 'map-marker-outline', route: '/(aux)/account/address' },
+        { label: 'Privacidade', icon: 'shield-account-outline', route: '/(aux)/account/profile/privacy' },
+      ]
+    },
+    {
+      title: 'Geral',
+      items: [
+        { label: 'Mercado Play', icon: 'play-box-outline', route: '/(aux)/misc/mercado-play' },
+        { label: 'Ajuda', icon: 'help-circle-outline', route: '/(aux)/misc/help' },
+      ]
+    }
+  ];
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor={theme.colors.secondary} />
-
-      <SafeAreaView style={styles.header}>
+      
+      {/* Header Amarelo */}
+      <View style={styles.header}>
         <View style={styles.headerContent}>
-          <Text style={styles.headerTitle}>Menu</Text>
-          <TouchableOpacity onPress={() => router.back()}>
-            <MaterialCommunityIcons name="close" size={26} color="#333" />
-          </TouchableOpacity>
-        </View>
-
-        <View style={styles.userRow}>
-          <View style={styles.avatar}>
-            {(user as any)?.avatar ? (
-              <Image 
-                source={{ uri: (user as any).avatar }} 
-                style={{ width: 50, height: 50, borderRadius: 25 }} 
-              />
-            ) : (
-              <MaterialCommunityIcons name="account" size={30} color="#ccc" />
-            )}
-          </View>
-
-          <View>
-            <Text style={styles.userName}>{(user as any)?.name || 'Visitante'}</Text>
-            <Text style={styles.userLevel}>Mercado Pontos</Text>
-          </View>
-        </View>
-      </SafeAreaView>
-
-      <ScrollView style={{ flex: 1 }}>
-        <View style={styles.grid}>
-          {menuOptions.map((item) => (
-            <TouchableOpacity
-              key={item.label}
-              style={styles.gridItem}
-              onPress={() => handleNavigate(item.route)}
-            >
-              <MaterialCommunityIcons
-                name={item.icon as any}
-                size={28}
-                color={theme.colors.primary}
-              />
-              <Text style={styles.gridLabel}>{item.label}</Text>
+            <Text style={styles.headerTitle}>Mais</Text>
+            <TouchableOpacity onPress={() => router.push('/(aux)/shop/cart' as any)}>
+                <MaterialCommunityIcons name="cart-outline" size={26} color="#333" />
             </TouchableOpacity>
-          ))}
         </View>
 
-        <View style={{ height: 1, backgroundColor: '#ddd', marginVertical: 10 }} />
-
-        <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-          <Text style={styles.logoutText}>Sair do aplicativo</Text>
+        {/* Card de Perfil Resumido */}
+        <TouchableOpacity 
+            style={styles.profileCard} 
+            onPress={() => handleNavigation('/(aux)/account/profile')}
+            activeOpacity={0.9}
+        >
+            <View style={styles.avatarContainer}>
+                <MaterialCommunityIcons name="account" size={30} color="#ccc" />
+            </View>
+            <View style={styles.profileInfo}>
+                <Text style={styles.profileName}>
+                    {user?.name || 'Olá, Visitante'}
+                </Text>
+                <Text style={styles.profileSub}>Meu perfil</Text>
+            </View>
+            <MaterialCommunityIcons name="chevron-right" size={24} color="#666" />
         </TouchableOpacity>
+      </View>
 
-        <Text style={styles.versionText}>Versão 1.0.0</Text>
-        <View style={{ height: 30 }} />
+      <View style={styles.shortcutsGrid}>
+          <TouchableOpacity style={styles.shortcutBtn} onPress={() => handleNavigation('/(aux)/account/wallet')}>
+              <View style={styles.iconCircle}>
+                  <MaterialCommunityIcons name="qrcode-scan" size={24} color={theme.colors.primary} />
+              </View>
+              <Text style={styles.shortcutText}>Pagar com QR</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.shortcutBtn} onPress={() => handleNavigation('/(aux)/shop/all-products')}>
+              <View style={styles.iconCircle}>
+                  <MaterialCommunityIcons name="tag-outline" size={24} color={theme.colors.primary} />
+              </View>
+              <Text style={styles.shortcutText}>Ofertas</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.shortcutBtn} onPress={() => handleNavigation('/(aux)/misc/mercado-play')}>
+              <View style={styles.iconCircle}>
+                  <MaterialCommunityIcons name="play-circle-outline" size={24} color={theme.colors.primary} />
+              </View>
+              <Text style={styles.shortcutText}>Vídeos</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.shortcutBtn} onPress={() => handleNavigation('/(aux)/account/wallet')}>
+              <View style={styles.iconCircle}>
+                  <MaterialCommunityIcons name="wallet-outline" size={24} color={theme.colors.primary} />
+              </View>
+              <Text style={styles.shortcutText}>Carteira</Text>
+          </TouchableOpacity>
+      </View>
+
+      {/* Lista de Opções */}
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+        {menuItems.map((section, index) => (
+            <View key={index} style={styles.section}>
+                <View style={styles.sectionHeader}>
+                    <Text style={styles.sectionTitle}>{section.title}</Text>
+                </View>
+                {section.items.map((item, idx) => (
+                    <React.Fragment key={idx}>
+                        <TouchableOpacity 
+                            style={styles.menuItem}
+                            onPress={() => item.route && handleNavigation(item.route)}
+                        >
+                            <View style={{flexDirection: 'row', alignItems: 'center'}}>
+                                <MaterialCommunityIcons name={item.icon as any} size={24} color="#666" style={{marginRight: 15}} />
+                                <Text style={styles.menuLabel}>{item.label}</Text>
+                            </View>
+                            <MaterialCommunityIcons name="chevron-right" size={20} color="#ccc" />
+                        </TouchableOpacity>
+                        {idx < section.items.length - 1 && <Divider />}
+                    </React.Fragment>
+                ))}
+            </View>
+        ))}
+        
+        <View style={{height: 20}} />
       </ScrollView>
-    </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f5f5f5' },
+  
   header: {
-    backgroundColor: theme.colors.secondary,
-    paddingTop: Platform.OS === 'android' ? 30 : 0,
-    paddingBottom: 15,
+      backgroundColor: theme.colors.secondary,
+      paddingTop: Platform.OS === 'android' ? 30 : 0,
+      paddingBottom: 15,
   },
   headerContent: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    alignItems: 'center',
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      paddingHorizontal: 15,
+      marginBottom: 15
   },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#333',
+  headerTitle: { fontSize: 18, fontWeight: '500', color: '#333' },
+  
+  profileCard: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: '#fff',
+      marginHorizontal: 15,
+      padding: 10,
+      borderRadius: 6,
+      elevation: 2
   },
-  userRow: {
-    flexDirection: 'row',
-    paddingHorizontal: 20,
-    marginTop: 15,
-    alignItems: 'center',
+  avatarContainer: {
+      width: 45, height: 45, borderRadius: 22.5, backgroundColor: '#f5f5f5',
+      justifyContent: 'center', alignItems: 'center', marginRight: 12,
+      borderWidth: 1, borderColor: '#eee'
   },
-  avatar: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    backgroundColor: '#fff',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 10,
+  profileInfo: { flex: 1 },
+  profileName: { fontWeight: 'bold', fontSize: 16, color: '#333' },
+  profileSub: { color: '#666', fontSize: 12 },
+
+  shortcutsGrid: {
+      flexDirection: 'row',
+      justifyContent: 'space-around',
+      backgroundColor: '#fff',
+      paddingVertical: 20,
+      marginBottom: 10,
+      elevation: 1
   },
-  userName: {
-    fontWeight: 'bold',
-    fontSize: 16,
-    color: '#333',
+  shortcutBtn: { alignItems: 'center', width: 80 },
+  iconCircle: {
+      width: 50, height: 50, borderRadius: 25, backgroundColor: '#fff',
+      justifyContent: 'center', alignItems: 'center', marginBottom: 5,
+      borderWidth: 1, borderColor: '#eee', elevation: 2
   },
-  userLevel: {
-    fontSize: 12,
-    color: '#333',
+  shortcutText: { fontSize: 12, color: '#666' },
+
+  scrollContent: { paddingHorizontal: 15 },
+  section: {
+      backgroundColor: '#fff',
+      borderRadius: 8,
+      marginBottom: 15,
+      overflow: 'hidden',
+      elevation: 1
   },
-  grid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    padding: 10,
+  sectionHeader: {
+      paddingHorizontal: 16,
+      paddingTop: 16,
+      paddingBottom: 5
   },
-  gridItem: {
-    width: '31%',
-    backgroundColor: '#fff',
-    margin: '1%',
-    aspectRatio: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderRadius: 8,
-    elevation: 1,
+  sectionTitle: {
+      fontSize: 14,
+      fontWeight: 'bold',
+      color: theme.colors.primary,
+      textTransform: 'uppercase'
   },
-  gridLabel: {
-    marginTop: 10,
-    fontSize: 12,
-    textAlign: 'center',
-    color: '#666',
+  menuItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      padding: 16,
   },
-  logoutButton: {
-    margin: 20,
-    backgroundColor: '#fff',
-    padding: 15,
-    borderRadius: 6,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#eee',
-  },
-  logoutText: {
-    color: '#d63031',
-    fontWeight: 'bold',
-  },
-  versionText: {
-    textAlign: 'center',
-    color: '#999',
-    fontSize: 12,
-    marginBottom: 10,
-  },
+  menuLabel: { fontSize: 15, color: '#333' }
 });

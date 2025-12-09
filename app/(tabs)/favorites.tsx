@@ -6,13 +6,17 @@ import {
   Image,
   TouchableOpacity,
   ActivityIndicator,
+  SafeAreaView,
+  StatusBar,
+  Platform,
+  Alert
 } from 'react-native';
 import { Text } from 'react-native-paper';
 import { useRouter } from 'expo-router';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { theme } from '../../constants/theme';
-import api from '../../services/api';
-
+import { theme } from '../../src/constants/theme';
+import api from '../../src/services/api';
+import { useCart } from '../../src/context/CartContext'; 
 type Product = {
   id: number;
   title: string;
@@ -22,6 +26,7 @@ type Product = {
 
 export default function Favorites() {
   const router = useRouter();
+  const { cartItems } = useCart(); 
 
   const [favorites, setFavorites] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
@@ -31,9 +36,11 @@ export default function Favorites() {
 
     async function loadFavorites() {
       try {
-        const response = await api.get('/api/products');
+       
+        const response = await api.get('/api/product');
         if (mounted) {
-          setFavorites(response.data.slice(0, 4));
+  
+          setFavorites(Array.isArray(response.data) ? response.data.slice(0, 5) : []);
         }
       } catch (error) {
         console.log('Erro ao carregar favoritos:', error);
@@ -49,60 +56,80 @@ export default function Favorites() {
     };
   }, []);
 
-
   const handleOpenProduct = useCallback(
     (id: number) => {
-      router.push(`/product/${id}`);
+      router.push(`/(aux)/shop/product/${id}` as any);
     },
     [router],
   );
 
+  const handleRemoveFavorite = (id: number) => {
+    Alert.alert("Remover", "Deseja remover este item dos favoritos?", [
+        { text: "Cancelar", style: "cancel" },
+        { 
+            text: "Sim", 
+            onPress: () => setFavorites(prev => prev.filter(item => item.id !== id))
+        }
+    ]);
+  };
 
   const renderItem = useCallback(
-    ({ item }: { item: Product }) => (
-      <TouchableOpacity
-        style={styles.card}
-        onPress={() => handleOpenProduct(item.id)}
-        activeOpacity={0.8}
-      >
-        <Image
-          source={{ uri: item.imageURL[0] }}
-          style={styles.image}
-          resizeMode="contain"
-        />
+    ({ item }: { item: Product }) => {
+        const imageUri = (item.imageURL && item.imageURL.length > 0) 
+            ? item.imageURL[0] 
+            : 'https://via.placeholder.com/150';
 
-        <View style={styles.info}>
-          <Text style={styles.title} numberOfLines={2}>
-            {item.title}
-          </Text>
+        return (
+          <TouchableOpacity
+            style={styles.card}
+            onPress={() => handleOpenProduct(item.id)}
+            activeOpacity={0.9}
+          >
+            <Image
+              source={{ uri: imageUri }}
+              style={styles.image}
+              resizeMode="contain"
+            />
 
-          <Text style={styles.price}>
-            R$ {item.price.toFixed(2)}
-          </Text>
+            <View style={styles.info}>
+              <Text style={styles.title} numberOfLines={2}>
+                {item.title}
+              </Text>
 
-          <Text style={styles.shipping}>Frete grátis</Text>
-        </View>
+              <Text style={styles.price}>
+                R$ {item.price.toFixed(2).replace('.', ',')}
+              </Text>
 
-        <TouchableOpacity style={styles.deleteBtn}>
-          <Text style={{ color: theme.colors.primary, fontSize: 12 }}>
-            Excluir
-          </Text>
-        </TouchableOpacity>
-      </TouchableOpacity>
-    ),
+              <Text style={styles.shipping}>Frete grátis</Text>
+            </View>
+
+            <TouchableOpacity 
+                style={styles.deleteBtn} 
+                onPress={() => handleRemoveFavorite(item.id)}
+            >
+              <Text style={styles.deleteText}>Excluir</Text>
+            </TouchableOpacity>
+          </TouchableOpacity>
+        );
+    },
     [handleOpenProduct],
   );
 
   return (
-    <View style={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()}>
-          <MaterialCommunityIcons name="arrow-left" size={24} />
-        </TouchableOpacity>
+    <SafeAreaView style={styles.container}>
+      <StatusBar barStyle="dark-content" backgroundColor={theme.colors.secondary} />
 
+      <View style={styles.header}>
         <Text style={styles.headerTitle}>Favoritos</Text>
 
-        <View style={{ width: 24 }} />
+        <TouchableOpacity onPress={() => router.push('/(aux)/shop/cart' as any)} style={{ padding: 5 }}>
+            <MaterialCommunityIcons name="cart-outline" size={24} color="#333" />
+            {cartItems.length > 0 && (
+                <View style={styles.badge}>
+                    <Text style={styles.badgeText}>{cartItems.length}</Text>
+                </View>
+            )}
+        </TouchableOpacity>
       </View>
 
       {loading ? (
@@ -116,21 +143,29 @@ export default function Favorites() {
           data={favorites}
           renderItem={renderItem}
           keyExtractor={item => String(item.id)}
-          contentContainerStyle={{ padding: 10 }}
+          contentContainerStyle={{ padding: 10, paddingBottom: 80 }}
           showsVerticalScrollIndicator={false}
           ListEmptyComponent={
-            <Text style={{ textAlign: 'center', marginTop: 50 }}>
-              Você não tem favoritos.
-            </Text>
+            <View style={styles.emptyContainer}>
+                <MaterialCommunityIcons name="heart-broken" size={60} color="#ddd" />
+                <Text style={styles.emptyText}>Você não tem favoritos ainda.</Text>
+                <TouchableOpacity onPress={() => router.push('/(tabs)')}>
+                    <Text style={styles.linkText}>Descobrir produtos</Text>
+                </TouchableOpacity>
+            </View>
           }
         />
       )}
-    </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f5f5f5' },
+  container: { 
+      flex: 1, 
+      backgroundColor: '#f5f5f5',
+      paddingTop: Platform.OS === 'android' ? 30 : 0 
+  },
 
   header: {
     flexDirection: 'row',
@@ -138,36 +173,76 @@ const styles = StyleSheet.create({
     padding: 15,
     backgroundColor: theme.colors.secondary,
     alignItems: 'center',
+    elevation: 2,
   },
 
-  headerTitle: { fontSize: 18, fontWeight: '500' },
+  headerTitle: { fontSize: 20, fontWeight: '500', color: '#333' },
 
   card: {
     flexDirection: 'row',
     backgroundColor: '#fff',
-    marginBottom: 10,
-    borderRadius: 6,
-    padding: 10,
-    elevation: 1,
+    marginBottom: 2, 
+    padding: 15,
     alignItems: 'center',
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee'
   },
 
-  image: { width: 80, height: 80 },
+  image: { 
+      width: 80, 
+      height: 80,
+      backgroundColor: '#f9f9f9',
+      borderRadius: 4
+  },
 
   info: {
     flex: 1,
-    marginLeft: 10,
+    marginLeft: 15,
     justifyContent: 'center',
   },
 
-  title: { fontSize: 14, color: '#333' },
+  title: { fontSize: 14, color: '#333', marginBottom: 5 },
 
-  price: { fontSize: 18, fontWeight: 'bold', marginTop: 4 },
+  price: { fontSize: 18, fontWeight: '500', color: '#333' },
 
-  shipping: { fontSize: 12, color: '#00a650' },
+  shipping: { fontSize: 12, color: '#00a650', fontWeight: 'bold', marginTop: 2 },
 
   deleteBtn: {
+    padding: 10,
     justifyContent: 'center',
-    paddingLeft: 10,
   },
+  
+  deleteText: {
+      color: '#3483fa',
+      fontSize: 13,
+      fontWeight: '500'
+  },
+
+  badge: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    backgroundColor: '#d63031',
+    borderRadius: 8,
+    width: 16,
+    height: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  badgeText: { color: '#fff', fontSize: 10, fontWeight: 'bold' },
+
+  emptyContainer: {
+      alignItems: 'center',
+      marginTop: 60
+  },
+  emptyText: {
+      marginTop: 15,
+      fontSize: 16,
+      color: '#666'
+  },
+  linkText: {
+      marginTop: 10,
+      color: '#3483fa',
+      fontWeight: 'bold'
+  }
 });

@@ -1,24 +1,7 @@
 import { Tabs } from 'expo-router';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { Platform } from 'react-native';
-import { theme } from '../../constants/theme';
-
-type TabItem = {
-  name: string;
-  title?: string;
-  icon: string;
-  iconFocused?: string;
-  hidden?: boolean;
-};
-
-const TABS: TabItem[] = [
-  { name: 'home', title: 'Início', icon: 'home-outline', iconFocused: 'home' },
-  { name: 'favorites', title: 'Favoritos', icon: 'heart-outline', iconFocused: 'heart' },
-  { name: 'my-purchases', title: 'Compras', icon: 'shopping-outline', iconFocused: 'shopping' },
-  { name: 'notifications', title: 'Notificações', icon: 'bell-outline', iconFocused: 'bell' },
-  { name: 'menu', title: 'Mais', icon: 'menu' },
-  { name: 'categories', hidden: true, icon: 'shape' },
-];
+import { Platform, View, StyleSheet } from 'react-native';
+import { theme } from '../../src/constants/theme';
 
 export default function TabLayout() {
   return (
@@ -26,49 +9,119 @@ export default function TabLayout() {
       screenOptions={{
         headerShown: false,
         tabBarHideOnKeyboard: true,
-
         tabBarActiveTintColor: theme.colors.primary,
-        tabBarInactiveTintColor: '#666666',
-
+        tabBarInactiveTintColor: '#666',
+        
         tabBarStyle: {
           backgroundColor: '#FFFFFF',
           borderTopWidth: 1,
           borderTopColor: '#e0e0e0',
-          elevation: 0,
-
-          height: Platform.OS === 'android' ? 70 : 95,
-          paddingBottom: Platform.OS === 'android' ? 12 : 30,
-          paddingTop: 10,
+          height: Platform.OS === 'android' ? 60 : 85,
+          paddingBottom: Platform.OS === 'android' ? 10 : 30,
+          paddingTop: 8,
+          overflow: 'visible', 
+          position: 'absolute',
+          elevation: 0, 
         },
-
+        
         tabBarLabelStyle: {
-          fontSize: 13,
+          fontSize: 10,
           fontWeight: '600',
-          marginTop: 2,
+          marginBottom: 0,
         },
       }}
     >
-      {TABS.map(tab => (
-        <Tabs.Screen
-          key={tab.name}
-          name={tab.name}
-          options={{
-            href: tab.hidden ? null : undefined,
-            title: tab.title,
-            tabBarIcon: ({ color, focused }) => (
-              <MaterialCommunityIcons
-                name={
-                  focused && tab.iconFocused
-                    ? (tab.iconFocused as any)
-                    : (tab.icon as any)
-                }
-                size={30}
-                color={color}
-              />
-            ),
-          }}
-        />
-      ))}
+      {/* 1. INÍCIO */}
+      <Tabs.Screen
+        name="index" 
+        options={{
+          title: 'Início',
+          tabBarIcon: ({ color }) => (
+            <MaterialCommunityIcons name="home-outline" size={26} color={color} />
+          ),
+        }}
+      />
+
+      {/* 2. CATEGORIAS */}
+      <Tabs.Screen
+        name="categories"
+        options={{
+          title: 'Categorias',
+          tabBarIcon: ({ color }) => (
+            <MaterialCommunityIcons name="format-list-bulleted" size={26} color={color} />
+          ),
+        }}
+      />
+
+      {/* 3. CARRINHO (BOTÃO FLUTUANTE) */}
+      {/* Requer o arquivo app/(tabs)/cart.tsx */}
+      <Tabs.Screen
+        name="cart"
+        options={{
+          title: '',
+          tabBarIcon: ({ focused }) => (
+            <View style={styles.floatingButtonContainer}>
+              <View style={[styles.floatingButton, focused && styles.floatingButtonFocused]}>
+                <MaterialCommunityIcons name="cart-outline" size={30} color="#FFF" />
+              </View>
+            </View>
+          ),
+        }}
+      />
+
+      {/* 4. FAVORITOS */}
+      <Tabs.Screen
+        name="favorites"
+        options={{
+          title: 'Favoritos',
+          tabBarIcon: ({ color }) => (
+            <MaterialCommunityIcons name="heart-outline" size={26} color={color} />
+          ),
+        }}
+      />
+
+      {/* 5. MAIS */}
+      <Tabs.Screen
+        name="menu"
+        options={{
+          title: 'Mais',
+          tabBarIcon: ({ color }) => (
+            <MaterialCommunityIcons name="menu" size={26} color={color} />
+          ),
+        }}
+      />
+
+      {/* ROTAS OCULTAS */}
+      <Tabs.Screen name="my-purchases" options={{ href: null }} />
+      <Tabs.Screen name="notifications" options={{ href: null }} />
     </Tabs>
   );
 }
+
+const styles = StyleSheet.create({
+  floatingButtonContainer: {
+    top: -20, 
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 10,
+    elevation: 10,
+  },
+  floatingButton: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: theme.colors.primary, 
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 5,
+    borderWidth: 3,
+    borderColor: '#f5f5f5', 
+  },
+  floatingButtonFocused: {
+    backgroundColor: '#2968c8',
+  }
+});

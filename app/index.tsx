@@ -3,9 +3,11 @@ import * as NavigationBar from 'expo-navigation-bar';
 import React, { useEffect } from 'react';
 import { Image, Platform, StyleSheet, TouchableOpacity, View, ActivityIndicator } from 'react-native';
 import { Text } from 'react-native-paper';
-import { theme } from '../constants/theme';
-import { useAndroidNavigationBar } from '../hooks/useAndroidNavigationBar';
-import { useAuth } from '../context/AuthContext'; 
+import AsyncStorage from '@react-native-async-storage/async-storage'; 
+
+import { theme } from '../src/constants/theme';
+import { useAndroidNavigationBar } from '../src/hooks/useAndroidNavigationBar';
+import { useAuth } from '../src/context/AuthContext'; 
 
 export default function Welcome() {
   const router = useRouter();
@@ -27,12 +29,18 @@ export default function Welcome() {
 
   useEffect(() => {
     if (!loading && user) {
-      router.replace('/(tabs)/home');
+      router.replace('/(tabs)');
     }
   }, [user, loading, router]);
 
   const handleGuestAccess = async () => {
-    await loginAsGuest();
+    if (loginAsGuest) {
+        await loginAsGuest(); 
+    }
+
+    await AsyncStorage.setItem('@user_email', 'visitante@app.com');
+
+    router.replace('/(tabs)');
   };
 
   if (loading) {
@@ -47,6 +55,7 @@ export default function Welcome() {
 
   return (
     <View style={styles.container}>
+
       <TouchableOpacity 
         style={styles.guestButton} 
         onPress={handleGuestAccess}
@@ -57,7 +66,7 @@ export default function Welcome() {
 
       <View style={styles.content}>
         <Image
-          source={require('../assets/img/ui/van-logo.png')}
+          source={require('../src/assets/img/ui/van-logo.png')}
           style={styles.vanImage}
           resizeMode="contain"
         />

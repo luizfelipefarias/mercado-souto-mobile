@@ -1,11 +1,29 @@
-module.exports = function(api) {
+module.exports = function (api) {
   api.cache(true);
   return {
-    presets: ['babel-preset-expo'], // Se estiver usando Expo
+    presets: ['babel-preset-expo'],
     plugins: [
-      // Outros plugins que você já tenha (ex: react-native-dotenv) ficam aqui
-      
-      'react-native-reanimated/plugin', // <--- ADICIONE ESTA LINHA POR ÚLTIMO
+      [
+        'module-resolver',
+        {
+          root: ['./'],
+          alias: {
+            '@': './src',
+          },
+          extensions: [
+            '.ios.ts',
+            '.android.ts',
+            '.ts',
+            '.ios.tsx',
+            '.android.tsx',
+            '.tsx',
+            '.jsx',
+            '.js',
+            '.json',
+          ],
+        },
+      ],
+      'react-native-reanimated/plugin', 
     ],
   };
 };
