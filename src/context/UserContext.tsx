@@ -2,46 +2,70 @@ import React, { createContext, useContext, useState, ReactNode, useCallback, use
 import api from '../services/api';
 import { useAuth } from './AuthContext';
 import { Address } from '../interfaces';
+import AsyncStorage from '@react-native-async-storage/async-storage'; 
 
 interface UserContextData {
-  addresses: Address[];
-  loadingAddress: boolean;
-  refreshAddresses: () => Promise<void>;
+    addresses: Address[];
+    loadingAddress: boolean;
+    refreshAddresses: () => Promise<void>;
 }
 
 const UserContext = createContext<UserContextData>({} as UserContextData);
 
+// Chave local para endereços de convidado (copiada do AddressList.tsx)
+const GUEST_ADDRESS_KEY = '@guest_addresses'; 
+
 export function UserProvider({ children }: { children: ReactNode }) {
-  const { user, isGuest } = useAuth();
-  const [addresses, setAddresses] = useState<Address[]>([]);
-  const [loadingAddress, setLoadingAddress] = useState(false);
+    const { user, isGuest } = useAuth();
+    const [addresses, setAddresses] = useState<Address[]>([]);
+    const [loadingAddress, setLoadingAddress] = useState(false);
 
-  const refreshAddresses = useCallback(async () => {
-    if (isGuest || !user?.id) {
-      setAddresses([]);
-      return;
-    }
+    const refreshAddresses = useCallback(async () => {
+        setLoadingAddress(true);
 
-    setLoadingAddress(true);
-    try {
-      const response = await api.get<Address[]>(`/api/address/by-client/${user.id}`);
-      setAddresses(Array.isArray(response.data) ? response.data : []);
-    } catch (error) {
-      console.log('Erro ao buscar endereços:', error);
-    } finally {
-      setLoadingAddress(false);
-    }
-  }, [user, isGuest]);
+        if (isGuest) {
+            // CENÁRIO GUEST: Carregar do AsyncStorage
+            try {
+                const storedAddresses = await AsyncStorage.getItem(GUEST_ADDRESS_KEY);
+                const localAddresses: Address[] = storedAddresses ? JSON.parse(storedAddresses) : [];
+                setAddresses(localAddresses);
+            } catch (error) {
+                console.log('Erro ao carregar endereços localmente:', error);
+                setAddresses([]);
+            } finally {
+                setLoadingAddress(false);
+            }
+            return;
+        }
 
-  useEffect(() => {
-    refreshAddresses();
-  }, [refreshAddresses]);
+        if (!user?.id) {
+             setAddresses([]);
+             setLoadingAddress(false);
+             return;
+        }
 
-  return (
-    <UserContext.Provider value={{ addresses, loadingAddress, refreshAddresses }}>
-      {children}
-    </UserContext.Provider>
-  );
+        // CENÁRIO LOGADO: Buscar via API
+        try {
+            // ✅ CORRETO: Este endpoint busca TODOS os endereços associados ao {idClient}.
+            const response = await api.get<Address[]>(`/api/address/by-client/${user.id}`); 
+            setAddresses(Array.isArray(response.data) ? response.data : []);
+        } catch (error) {
+            console.log('Erro ao buscar endereços API:', error);
+            setAddresses([]);
+        } finally {
+            setLoadingAddress(false);
+        }
+    }, [user, isGuest]);
+
+    useEffect(() => {
+        refreshAddresses();
+    }, [refreshAddresses]);
+
+    return (
+        <UserContext.Provider value={{ addresses, loadingAddress, refreshAddresses }}>
+            {children}
+        </UserContext.Provider>
+    );
 }
 
 export const useUser = () => useContext(UserContext);

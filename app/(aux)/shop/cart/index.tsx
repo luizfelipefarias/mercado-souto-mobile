@@ -15,26 +15,15 @@ import { useRouter, Router } from 'expo-router';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { theme } from '../../../../src/constants/theme';
 import { useAndroidNavigationBar } from '../../../../src/hooks/useAndroidNavigationBar';
-import { useCart } from '../../../../src/context/CartContext';
+import { useCart, CartItem } from '../../../../src/context/CartContext';
 import { useAuth } from '../../../../src/context/AuthContext';
-import { CartItem } from '../../../../src/interfaces'; 
 import Toast from 'react-native-toast-message';
 
-// Base URL da sua API para construção de caminhos absolutos
-const API_BASE_URL = 'http://162.243.70.61:8080';
-
-// Função auxiliar para construir URL absoluta
-const getAbsoluteImageUrl = (url: string | null): string | null => {
-    if (!url) return null;
-    if (url.startsWith('http')) return url;
-    // Tenta prefixar com a base da API
-    return `${API_BASE_URL}${url.startsWith('/') ? '' : '/'}${url}`;
-};
 
 interface CartItemComponentProps {
     item: CartItem;
-    handleRemove: (productId: number) => void;
-    updateQuantity: (productId: number, newQuantity: number) => void;
+    handleRemove: (id: number) => void;
+    updateQuantity: (id: number, amount: number) => void;
     router: Router;
 }
 
@@ -42,37 +31,24 @@ interface CartItemComponentProps {
 const CartItemComponent = ({ item, handleRemove, updateQuantity, router }: CartItemComponentProps) => {
     const [imageError, setImageError] = useState(false);
     
-    const productId = item.product.id;
-    const productName = item.product.title;
-    const productPrice = item.product.price;
+    const productId = item.id;
+    const productName = item.name;
+    const productPrice = item.price;
+    const productImageUri = item.image; 
     
-    const imageArray = item.product.imageURL;
-    
-    // 🟢 CORREÇÃO: Usar o helper para garantir URL absoluta
-    const rawImageUri = 
-        (imageArray && Array.isArray(imageArray) && imageArray.length > 0)
-        ? imageArray[0]
-        : null;
-        
-    const productImageUri = getAbsoluteImageUrl(rawImageUri);
-    
-    // O fallback é ativado se houver erro ou se o URI final for nulo
-    const showIconFallback = imageError || !productImageUri;
+    const showIconFallback = imageError || !productImageUri || productImageUri.length === 0;
 
     return (
         <View key={item.id} style={styles.itemCard}>
           <View style={styles.itemRow}>
             
-            {/* Implementação da Imagem com Fallback Visual */}
             <View style={styles.itemImageContainer}>
               {showIconFallback ? (
                   <View style={styles.fallbackBackground}>
                       <MaterialCommunityIcons name="image-off-outline" size={30} color="#999" />
-                      <Text style={styles.fallbackText}>SEM IMAGEM</Text>
                   </View>
               ) : (
                 <Image
-                  // 🟢 O '!' é seguro aqui porque showIconFallback é falso
                   source={{ uri: productImageUri! }}
                   style={styles.itemImage}
                   resizeMode="contain"
@@ -96,7 +72,7 @@ const CartItemComponent = ({ item, handleRemove, updateQuantity, router }: CartI
               <View style={styles.controlsRow}>
                 <View style={styles.quantityControl}>
                   <TouchableOpacity
-                    onPress={() => updateQuantity(productId, item.quantity - 1)}
+                    onPress={() => updateQuantity(productId, -1)} 
                     style={[
                       styles.qtdBtn,
                       item.quantity === 1 && { opacity: 0.3 },
@@ -109,14 +85,14 @@ const CartItemComponent = ({ item, handleRemove, updateQuantity, router }: CartI
                   <Text style={styles.qtdText}>{item.quantity}</Text>
 
                   <TouchableOpacity
-                    onPress={() => updateQuantity(productId, item.quantity + 1)}
+                    onPress={() => updateQuantity(productId, 1)}
                     style={styles.qtdBtn}
                   >
                     <Text style={styles.qtdBtnText}>+</Text>
                   </TouchableOpacity>
                 </View>
 
-                <TouchableOpacity onPress={() => handleRemove(productId)}>
+                <TouchableOpacity onPress={() => handleRemove(productId)}> 
                   <Text style={styles.deleteText}>Excluir</Text>
                 </TouchableOpacity>
               </View>
@@ -135,6 +111,8 @@ const CartItemComponent = ({ item, handleRemove, updateQuantity, router }: CartI
 
 export default function Cart() {
   const router = useRouter();
+  // 💡 Note que, no contexto local (Guest), user pode ser {name: 'Visitante', id: null},
+  // mas isGuest é a forma mais clara de verificar.
   const { user, isGuest } = useAuth(); 
   const { cartItems, removeFromCart, updateQuantity } = useCart();
   
@@ -144,27 +122,34 @@ export default function Cart() {
     [cartItems]
   );
   
-  const totalProduct: number = useMemo(
+  const totalProduct = useMemo(
     () =>
       cartItems.reduce(
-        (sum, item) => sum + item.product.price * Math.max(item.quantity || 1, 1),
+        (sum, item) => sum + item.price * Math.max(item.quantity || 1, 1),
         0
       ),
     [cartItems]
   );
 
-  const totalShipping: number = 0; 
-  const total: number = totalProduct + totalShipping;
+  const totalShipping = useMemo(
+    () => cartItems.reduce((sum, item) => sum + (item.shipping || 0), 0),
+    [cartItems]
+  );
+
+  const total = totalProduct + totalShipping;
 
   useAndroidNavigationBar(true);
 
+  // 🟢 Substituindo Alert por Toast no handleRemove (exceto na confirmação web)
   const handleRemove = (id: number) => {
+    // 💡 Lógica de confirmação para Web
     if (Platform.OS === 'web') {
         if (window.confirm('Tem certeza que deseja remover este produto do carrinho?')) {
             removeFromCart(id);
             Toast.show({ type: 'success', text1: 'Item removido!' });
         }
     } else {
+        // Lógica de confirmação nativa (Alert)
         Alert.alert('Remover item', 'Tem certeza que deseja remover este produto do carrinho?', [
             { text: 'Cancelar', style: 'cancel' },
             {
@@ -179,8 +164,10 @@ export default function Cart() {
     }
   };
 
+  // 🟢 Lógica de Checkout: Substituindo Alert por Toast e forçando login
   const handleCheckout = () => {
 
+    // 💡 Lógica Guest: Se não está logado OU é convidado, joga para login
     if (!user || isGuest) {
       Toast.show({
         type: 'info',
@@ -194,7 +181,13 @@ export default function Cart() {
     }
 
     if (cartItems.length === 0) {
-      Alert.alert('Carrinho vazio', 'Adicione produtos antes de continuar.');
+        // 🟢 Substituindo Alert por Toast em caso de carrinho vazio
+        Toast.show({
+            type: 'info',
+            text1: 'Carrinho vazio',
+            text2: 'Adicione produtos antes de continuar.',
+            visibilityTime: 3000
+        });
       return;
     }
 
@@ -256,6 +249,7 @@ export default function Cart() {
             </View>
           </View>
 
+          {/* Mapeamento usando o componente tipado e seguro */}
           {cartItems.map((item) => (
               <CartItemComponent 
                   key={item.id}
