@@ -1,264 +1,111 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React from 'react';
 import {
   View,
-  Text,
   StyleSheet,
-  TouchableOpacity,
   FlatList,
   Image,
-  ActivityIndicator,
+  TouchableOpacity,
   SafeAreaView,
-  Platform,
   StatusBar,
   Alert
 } from 'react-native';
+import { Text } from 'react-native-paper';
 import { useRouter } from 'expo-router';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { theme } from '../../../../src/constants/theme';
-import api from '../../../../src/services/api';
-
-type Product = {
-  id: number;
-  title: string;
-  price: number;
-  imageURL?: string[];
-};
+import { useHistory } from '../../../../src/context/HistoryContext';
 
 export default function History() {
   const router = useRouter();
-  const [history, setHistory] = useState<Product[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { history, clearHistory } = useHistory();
 
-  
-  const loadHistory = useCallback(async () => {
-    try {
-      setLoading(true);
-      const response = await api.get('/api/product');
-
-      const data = Array.isArray(response.data) ? response.data.slice(0, 6) : [];
-      setHistory(data);
-    } catch (error) {
-      console.log('Erro ao carregar histórico', error);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    loadHistory();
-  }, [loadHistory]);
-
-  const handleClearHistory = () => {
-    Alert.alert(
-      'Limpar histórico',
-      'Tem certeza que deseja apagar todo o seu histórico de navegação?',
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        { 
-          text: 'Limpar', 
-          onPress: () => setHistory([]), 
-          style: 'destructive'
-        }
-      ]
-    );
+  const handleClear = () => {
+    Alert.alert('Limpar', 'Deseja apagar todo o histórico?', [
+      { text: 'Cancelar', style: 'cancel' },
+      { text: 'Apagar', style: 'destructive', onPress: clearHistory }
+    ]);
   };
 
-  const renderItem = ({ item }: { item: Product }) => (
+  const renderItem = ({ item }: { item: any }) => (
     <TouchableOpacity
-      style={styles.itemCard}
-      onPress={() => router.push(`/product/${item.id}` as any)}
-      activeOpacity={0.9}
+      style={styles.card}
+      onPress={() => router.push(`/(aux)/shop/product/${item.id}` as any)}
     >
-      <Image
-        source={{
-          uri: item.imageURL?.[0] || 'https://via.placeholder.com/150',
-        }}
-        style={styles.itemImage}
-        resizeMode="contain"
-      />
-      
-      <View style={styles.itemInfo}>
-        <Text style={styles.itemTitle} numberOfLines={2}>
-          {item.title}
-        </Text>
-        <Text style={styles.itemPrice}>
-          R$ {item.price.toFixed(2).replace('.', ',')}
-        </Text>
-        
-        <Text style={styles.viewedDate}>Visto hoje</Text>
+      <View style={styles.imageContainer}>
+        {item.image ? (
+          <Image source={{ uri: item.image }} style={styles.image} resizeMode="contain" />
+        ) : (
+          <MaterialCommunityIcons name="image-off-outline" size={40} color="#ddd" />
+        )}
       </View>
-
-      <TouchableOpacity onPress={() => {
-        setHistory(prev => prev.filter(p => p.id !== item.id));
-      }}>
-        <MaterialCommunityIcons name="close" size={20} color="#ccc" />
-      </TouchableOpacity>
+      
+      <View style={styles.info}>
+        <Text style={styles.title} numberOfLines={2}>{item.title}</Text>
+        <Text style={styles.price}>R$ {item.price.toFixed(2).replace('.', ',')}</Text>
+      </View>
+      
+      <MaterialCommunityIcons name="chevron-right" size={24} color="#ccc" />
     </TouchableOpacity>
   );
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor={theme.colors.secondary} />
 
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-          <MaterialCommunityIcons name="arrow-left" size={24} color="#333" />
-        </TouchableOpacity>
-
-        <Text style={styles.title}>Histórico</Text>
-
-        {history.length > 0 ? (
-          <TouchableOpacity onPress={handleClearHistory}>
-            <Text style={styles.clearText}>Limpar</Text>
+      <SafeAreaView style={styles.header}>
+        <View style={styles.headerContent}>
+          <TouchableOpacity onPress={() => router.back()}>
+            <MaterialCommunityIcons name="arrow-left" size={24} color="#333" />
           </TouchableOpacity>
-        ) : (
-          <View style={{ width: 40 }} />
-        )}
-      </View>
+          <Text style={styles.headerTitle}>Histórico</Text>
+          {history.length > 0 ? (
+            <TouchableOpacity onPress={handleClear}>
+              <Text style={styles.clearText}>Limpar</Text>
+            </TouchableOpacity>
+          ) : (
+            <View style={{ width: 40 }} />
+          )}
+        </View>
+      </SafeAreaView>
 
-      {loading ? (
-        <View style={styles.center}>
-          <ActivityIndicator size="large" color={theme.colors.primary} />
-        </View>
-      ) : history.length === 0 ? (
-        <View style={styles.center}>
-          <MaterialCommunityIcons
-            name="clock-outline"
-            size={80}
-            color="#ddd"
-          />
-          <Text style={styles.emptyTitle}>Sem histórico por enquanto</Text>
-          <Text style={styles.emptyText}>
-            Os produtos que você visitar aparecerão aqui.
-          </Text>
-          <TouchableOpacity 
-            style={styles.goHomeBtn}
-            onPress={() => router.push('/(tabs)' as any)}
-          >
-            <Text style={styles.goHomeText}>Ir para o início</Text>
-          </TouchableOpacity>
-        </View>
-      ) : (
-        <FlatList
-          data={history}
-          keyExtractor={item => String(item.id)}
-          contentContainerStyle={styles.listContent}
-          renderItem={renderItem}
-          showsVerticalScrollIndicator={false}
-        />
-      )}
-    </SafeAreaView>
+      <FlatList
+        data={history}
+        renderItem={renderItem}
+        keyExtractor={(item) => String(item.id)}
+        contentContainerStyle={{ padding: 15 }}
+        ListEmptyComponent={
+          <View style={styles.emptyContainer}>
+            <MaterialCommunityIcons name="clock-outline" size={60} color="#ddd" />
+            <Text style={styles.emptyText}>Você ainda não viu nenhum produto.</Text>
+          </View>
+        }
+      />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#f5f5f5',
-    paddingTop: Platform.OS === 'android' ? 30 : 0,
-  },
-
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    padding: 15,
-    backgroundColor: theme.colors.secondary,
-    alignItems: 'center',
-    elevation: 2,
-  },
-
-  backButton: {
-    padding: 5,
-  },
-
-  title: {
-    fontSize: 18,
-    fontWeight: '500',
-    color: '#333',
-  },
-
-  clearText: {
-    fontSize: 14,
-    color: '#333',
-    fontWeight: 'bold',
-  },
-
-  center: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 40,
-  },
-
-  emptyTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#333',
-    marginTop: 20,
-  },
-
-  emptyText: {
-    color: '#999',
-    marginTop: 10,
-    textAlign: 'center',
-    fontSize: 14,
-    marginBottom: 30,
-  },
-
-  goHomeBtn: {
-    backgroundColor: theme.colors.primary,
-    paddingVertical: 10,
-    paddingHorizontal: 20,
-    borderRadius: 6,
-  },
-
-  goHomeText: {
-    color: '#fff',
-    fontWeight: 'bold',
-  },
-
-  listContent: {
-    padding: 10,
-  },
-
-  itemCard: {
+  container: { flex: 1, backgroundColor: '#f5f5f5' },
+  header: { backgroundColor: theme.colors.secondary, paddingTop: 30, elevation: 2 },
+  headerContent: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 15, paddingBottom: 12 },
+  headerTitle: { fontSize: 18, fontWeight: '500', color: '#333' },
+  clearText: { fontSize: 14, fontWeight: 'bold', color: '#333' },
+  
+  card: {
     flexDirection: 'row',
     backgroundColor: '#fff',
-    padding: 15,
     borderRadius: 8,
+    padding: 10,
     marginBottom: 10,
     alignItems: 'center',
-    elevation: 1,
+    elevation: 2
   },
-
-  itemImage: {
-    width: 70,
-    height: 70,
-    borderRadius: 4,
-    backgroundColor: '#f9f9f9',
-  },
-
-  itemInfo: {
-    flex: 1,
-    marginLeft: 15,
-    justifyContent: 'center',
-  },
-
-  itemTitle: {
-    fontSize: 14,
-    color: '#333',
-    marginBottom: 4,
-  },
-
-  itemPrice: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#333',
-  },
-
-  viewedDate: {
-    fontSize: 12,
-    color: '#999',
-    marginTop: 2,
-  },
+  imageContainer: { width: 70, height: 70, justifyContent: 'center', alignItems: 'center', backgroundColor: '#f9f9f9', borderRadius: 4, marginRight: 15 },
+  image: { width: '100%', height: '100%' },
+  info: { flex: 1 },
+  title: { fontSize: 14, color: '#333', marginBottom: 5 },
+  price: { fontSize: 18, fontWeight: 'bold', color: '#333' },
+  
+  emptyContainer: { alignItems: 'center', marginTop: 80 },
+  emptyText: { color: '#999', fontSize: 16, marginTop: 15 }
 });

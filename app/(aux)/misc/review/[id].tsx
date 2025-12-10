@@ -16,10 +16,11 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { theme } from '../../../../src/constants/theme';
 import { useAuth } from '../../../../src/context/AuthContext';
 import api from '../../../../src/services/api';
+import Toast from 'react-native-toast-message';
 
 export default function Review() {
   const router = useRouter();
-  const { id } = useLocalSearchParams();
+  const { id: productId } = useLocalSearchParams();
   const { user } = useAuth();
 
   const [rating, setRating] = useState(0);
@@ -27,29 +28,48 @@ export default function Review() {
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async () => {
-    if (!id) {
-      Alert.alert('Erro', 'Produto não identificado.');
+    if (!productId) {
+      Toast.show({ type: 'error', text1: 'Erro', text2: 'Produto não identificado.' });
       return;
     }
 
     if (!rating) {
-      Alert.alert('Atenção', 'Por favor, selecione uma nota de 1 a 5 estrelas.');
+      Toast.show({ type: 'info', text1: 'Atenção', text2: 'Selecione uma nota de 1 a 5 estrelas.' });
       return;
     }
 
     setLoading(true);
 
     try {
+      const userId = user?.id;
 
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      if (!userId) {
+         Toast.show({ type: 'error', text1: 'Erro', text2: 'Faça login para avaliar.' });
+         return;
+      }
 
-      Alert.alert('Obrigado!', 'Sua avaliação ajuda outros compradores.', [
-        { text: 'OK', onPress: () => router.back() }
-      ]);
+      const payload = {
+        productId: productId,
+        clientId: userId,
+        rating: rating,
+        comment: comment.trim(),
+        date: new Date().toISOString()
+      };
+
+      
+      console.log("AVALIAÇÃO ENVIADA:", payload);
+      await new Promise(resolve => setTimeout(resolve, 800));
+
+      Toast.show({ 
+        type: 'success', 
+        text1: 'Obrigado!', 
+        text2: 'Sua avaliação ajuda outros compradores.',
+        onHide: () => router.back()
+      });
       
     } catch (error) {
-      console.log(error);
-      Alert.alert('Erro', 'Não foi possível enviar a avaliação. Tente novamente.');
+      console.error(error);
+      Toast.show({ type: 'error', text1: 'Erro', text2: 'Não foi possível enviar a avaliação.' });
     } finally {
       setLoading(false);
     }

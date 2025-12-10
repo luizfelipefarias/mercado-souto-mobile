@@ -1,72 +1,195 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   View,
   StyleSheet,
   ScrollView,
   Image,
+  Alert,
   TouchableOpacity,
   SafeAreaView,
   StatusBar,
   Platform,
-  Alert,
 } from 'react-native';
 import { Text, Divider, Button } from 'react-native-paper';
-import { useRouter } from 'expo-router';
+import { useRouter, Router } from 'expo-router';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { theme } from '../../../../src/constants/theme';
 import { useAndroidNavigationBar } from '../../../../src/hooks/useAndroidNavigationBar';
 import { useCart } from '../../../../src/context/CartContext';
 import { useAuth } from '../../../../src/context/AuthContext';
+import { CartItem } from '../../../../src/interfaces'; 
+import Toast from 'react-native-toast-message';
+
+// Base URL da sua API para construção de caminhos absolutos
+const API_BASE_URL = 'http://162.243.70.61:8080';
+
+// Função auxiliar para construir URL absoluta
+const getAbsoluteImageUrl = (url: string | null): string | null => {
+    if (!url) return null;
+    if (url.startsWith('http')) return url;
+    // Tenta prefixar com a base da API
+    return `${API_BASE_URL}${url.startsWith('/') ? '' : '/'}${url}`;
+};
+
+interface CartItemComponentProps {
+    item: CartItem;
+    handleRemove: (productId: number) => void;
+    updateQuantity: (productId: number, newQuantity: number) => void;
+    router: Router;
+}
+
+
+const CartItemComponent = ({ item, handleRemove, updateQuantity, router }: CartItemComponentProps) => {
+    const [imageError, setImageError] = useState(false);
+    
+    const productId = item.product.id;
+    const productName = item.product.title;
+    const productPrice = item.product.price;
+    
+    const imageArray = item.product.imageURL;
+    
+    // 🟢 CORREÇÃO: Usar o helper para garantir URL absoluta
+    const rawImageUri = 
+        (imageArray && Array.isArray(imageArray) && imageArray.length > 0)
+        ? imageArray[0]
+        : null;
+        
+    const productImageUri = getAbsoluteImageUrl(rawImageUri);
+    
+    // O fallback é ativado se houver erro ou se o URI final for nulo
+    const showIconFallback = imageError || !productImageUri;
+
+    return (
+        <View key={item.id} style={styles.itemCard}>
+          <View style={styles.itemRow}>
+            
+            {/* Implementação da Imagem com Fallback Visual */}
+            <View style={styles.itemImageContainer}>
+              {showIconFallback ? (
+                  <View style={styles.fallbackBackground}>
+                      <MaterialCommunityIcons name="image-off-outline" size={30} color="#999" />
+                      <Text style={styles.fallbackText}>SEM IMAGEM</Text>
+                  </View>
+              ) : (
+                <Image
+                  // 🟢 O '!' é seguro aqui porque showIconFallback é falso
+                  source={{ uri: productImageUri! }}
+                  style={styles.itemImage}
+                  resizeMode="contain"
+                  onError={() => {
+                      setImageError(true);
+                  }}
+                />
+              )}
+            </View>
+
+
+            <View style={styles.itemInfo}>
+              <Text style={styles.itemName} numberOfLines={2}>
+                {productName}
+              </Text>
+
+              <Text style={styles.itemPrice}>
+                R$ {productPrice.toFixed(2).replace('.', ',')}
+              </Text>
+
+              <View style={styles.controlsRow}>
+                <View style={styles.quantityControl}>
+                  <TouchableOpacity
+                    onPress={() => updateQuantity(productId, item.quantity - 1)}
+                    style={[
+                      styles.qtdBtn,
+                      item.quantity === 1 && { opacity: 0.3 },
+                    ]}
+                    disabled={item.quantity === 1}
+                  >
+                    <Text style={styles.qtdBtnText}>-</Text>
+                  </TouchableOpacity>
+
+                  <Text style={styles.qtdText}>{item.quantity}</Text>
+
+                  <TouchableOpacity
+                    onPress={() => updateQuantity(productId, item.quantity + 1)}
+                    style={styles.qtdBtn}
+                  >
+                    <Text style={styles.qtdBtnText}>+</Text>
+                  </TouchableOpacity>
+                </View>
+
+                <TouchableOpacity onPress={() => handleRemove(productId)}>
+                  <Text style={styles.deleteText}>Excluir</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+
+          <Divider style={{ marginTop: 15, marginBottom: 10 }} />
+          
+          <TouchableOpacity style={{alignItems: 'center'}} onPress={() => router.push(`/(aux)/shop/product/${productId}` as any)}>
+              <Text style={{color: '#3483fa', fontWeight: '500'}}>Ver mais detalhes do produto</Text>
+          </TouchableOpacity>
+        </View>
+    );
+};
+
 
 export default function Cart() {
   const router = useRouter();
+  const { user, isGuest } = useAuth(); 
   const { cartItems, removeFromCart, updateQuantity } = useCart();
-  const { user } = useAuth();
-
-  useAndroidNavigationBar(true);
-
-
-  const totalProduct = useMemo(
+  
+  
+  const totalItemsCount = useMemo(
+    () => cartItems.reduce((acc, item) => acc + (item.quantity || 1), 0),
+    [cartItems]
+  );
+  
+  const totalProduct: number = useMemo(
     () =>
       cartItems.reduce(
-        (sum, item) => sum + item.price * Math.max(item.quantity || 1, 1),
+        (sum, item) => sum + item.product.price * Math.max(item.quantity || 1, 1),
         0
       ),
     [cartItems]
   );
 
-  const totalShipping = useMemo(
-    () => cartItems.reduce((sum, item) => sum + (item.shipping || 0), 0),
-    [cartItems]
-  );
+  const totalShipping: number = 0; 
+  const total: number = totalProduct + totalShipping;
 
-  const total = totalProduct + totalShipping;
+  useAndroidNavigationBar(true);
 
   const handleRemove = (id: number) => {
-    Alert.alert('Remover item', 'Tem certeza que deseja remover este produto do carrinho?', [
-      { text: 'Cancelar', style: 'cancel' },
-      {
-        text: 'Remover',
-        style: 'destructive',
-        onPress: () => removeFromCart(id),
-      },
-    ]);
+    if (Platform.OS === 'web') {
+        if (window.confirm('Tem certeza que deseja remover este produto do carrinho?')) {
+            removeFromCart(id);
+            Toast.show({ type: 'success', text1: 'Item removido!' });
+        }
+    } else {
+        Alert.alert('Remover item', 'Tem certeza que deseja remover este produto do carrinho?', [
+            { text: 'Cancelar', style: 'cancel' },
+            {
+                text: 'Remover',
+                style: 'destructive',
+                onPress: () => {
+                    removeFromCart(id); 
+                    Toast.show({ type: 'success', text1: 'Item removido!' });
+                },
+            },
+        ]);
+    }
   };
 
   const handleCheckout = () => {
 
-    if (!user || (user as any)?.isGuest) {
-      Alert.alert(
-        'Login necessário',
-        'Você precisa estar logado para finalizar a compra.',
-        [
-          { text: 'Cancelar', style: 'cancel' },
-          { 
-            text: 'Fazer login', 
-            onPress: () => router.push('/(auth)/login' as any) 
-          },
-        ]
-      );
+    if (!user || isGuest) {
+      Toast.show({
+        type: 'info',
+        text1: 'Login Necessário',
+        text2: 'Faça login ou crie sua conta para finalizar a compra.',
+        visibilityTime: 4000
+      });
+
+      router.push('/(auth)/login' as any); 
       return;
     }
 
@@ -77,6 +200,7 @@ export default function Cart() {
 
     router.push('/(aux)/shop/checkout' as any);
   };
+  
 
   return (
     <View style={styles.container}>
@@ -84,7 +208,11 @@ export default function Cart() {
 
       <SafeAreaView style={styles.header}>
         <View style={styles.headerContent}>
-          <TouchableOpacity onPress={() => router.back()} style={{ padding: 5 }}>
+          {/* Fallback para Home se não houver tela anterior */}
+          <TouchableOpacity 
+            onPress={() => router.canGoBack() ? router.back() : router.replace('/(tabs)')} 
+            style={{ padding: 5 }}
+          >
             <MaterialCommunityIcons name="arrow-left" size={24} color="#333" />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Carrinho ({cartItems.length})</Text>
@@ -103,7 +231,6 @@ export default function Cart() {
           </Text>
           <Button
             mode="contained"
-            // Rota corrigida para Home (Raiz da Tab)
             onPress={() => router.push('/(tabs)' as any)}
             style={styles.goHomeButton}
             labelStyle={{ color: '#333', fontWeight: 'bold' }}
@@ -113,7 +240,6 @@ export default function Cart() {
         </View>
       ) : (
         <ScrollView style={styles.scrollContent} showsVerticalScrollIndicator={false}>
-          {/* Card de Frete */}
           <View style={styles.shippingCard}>
             <MaterialCommunityIcons name="truck-delivery-outline" size={28} color="#00a650" />
             <View style={{ marginLeft: 15, flex: 1 }}>
@@ -130,61 +256,14 @@ export default function Cart() {
             </View>
           </View>
 
-
-          {cartItems.map(item => (
-            <View key={item.id} style={styles.itemCard}>
-              <View style={styles.itemRow}>
-                <Image
-                  source={{ uri: item.image || 'https://via.placeholder.com/150' }}
-                  style={styles.itemImage}
-                  resizeMode="contain"
-                />
-
-                <View style={styles.itemInfo}>
-                  <Text style={styles.itemName} numberOfLines={2}>
-                    {item.name}
-                  </Text>
-
-                  <Text style={styles.itemPrice}>
-                    R$ {item.price.toFixed(2).replace('.', ',')}
-                  </Text>
-
-                  <View style={styles.controlsRow}>
-                    <View style={styles.quantityControl}>
-                      <TouchableOpacity
-                        onPress={() => updateQuantity(item.id, -1)}
-                        style={[
-                          styles.qtdBtn,
-                          item.quantity === 1 && { opacity: 0.3 },
-                        ]}
-                        disabled={item.quantity === 1}
-                      >
-                        <Text style={styles.qtdBtnText}>-</Text>
-                      </TouchableOpacity>
-
-                      <Text style={styles.qtdText}>{item.quantity}</Text>
-
-                      <TouchableOpacity
-                        onPress={() => updateQuantity(item.id, 1)}
-                        style={styles.qtdBtn}
-                      >
-                        <Text style={styles.qtdBtnText}>+</Text>
-                      </TouchableOpacity>
-                    </View>
-
-                    <TouchableOpacity onPress={() => handleRemove(item.id)}>
-                      <Text style={styles.deleteText}>Excluir</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              </View>
-
-              <Divider style={{ marginTop: 15, marginBottom: 10 }} />
-              
-              <View style={{alignItems: 'center'}}>
-                  <Text style={{color: '#3483fa', fontWeight: '500'}}>Ver mais produtos do vendedor</Text>
-              </View>
-            </View>
+          {cartItems.map((item) => (
+              <CartItemComponent 
+                  key={item.id}
+                  item={item}
+                  handleRemove={handleRemove}
+                  updateQuantity={updateQuantity}
+                  router={router}
+              />
           ))}
 
 
@@ -193,7 +272,7 @@ export default function Cart() {
 
             <View style={styles.summaryRow}>
               <Text style={styles.summaryLabel}>
-                Produtos ({cartItems.reduce((a, b) => a + (b.quantity || 1), 0)})
+                Produtos ({totalItemsCount})
               </Text>
               <Text style={styles.summaryValue}>
                 R$ {totalProduct.toFixed(2).replace('.', ',')}
@@ -329,12 +408,34 @@ const styles = StyleSheet.create({
   itemRow: {
     flexDirection: 'row',
   },
-  itemImage: {
+  itemImageContainer: {
     width: 70,
     height: 70,
     marginRight: 15,
-    backgroundColor: '#fff',
     borderRadius: 4,
+    justifyContent: 'center',
+    alignItems: 'center',
+    overflow: 'hidden',
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#f0f0f0',
+  },
+  fallbackBackground: {
+    width: '100%', 
+    height: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#f9f9f9',
+  },
+  fallbackText: {
+      fontSize: 8,
+      color: '#999',
+      marginTop: 4,
+      fontWeight: 'bold'
+  },
+  itemImage: {
+    width: '100%',
+    height: '100%',
   },
   itemInfo: {
     flex: 1,

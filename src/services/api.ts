@@ -13,16 +13,19 @@ const api = axios.create({
 });
 
 
+const handleUnauthorized = async () => {
+    await AsyncStorage.removeItem(TOKEN_KEY);
+    console.log("Token expirado ou inválido. Logout forçado.");
+};
+
+
 api.interceptors.request.use(
   async (config) => {
     try {
-  
       const token = await AsyncStorage.getItem(TOKEN_KEY);
 
       if (token && config.headers) {
-
         config.headers.Authorization = `Bearer ${token}`;
-  
       }
     } catch (error) {
       console.error("Erro ao recuperar token:", error);
@@ -44,9 +47,12 @@ api.interceptors.response.use(
       console.log('API Error Status:', error.response.status);
       console.log('API Error Data:', error.response.data);
 
-    
       if (error.response.status === 401 || error.response.status === 403) {
-      
+        const isAuthRoute = error.config.url?.includes('/auth/login') || error.config.url?.includes('/auth/register');
+        
+        if (!isAuthRoute) {
+            handleUnauthorized();
+        }
       }
     } else {
       console.log('Network Error:', error.message);

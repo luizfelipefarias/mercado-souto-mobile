@@ -1,9 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { 
   View, 
   StyleSheet, 
   ScrollView, 
-  Image, 
+  Image as RNImage, 
   TouchableOpacity, 
   ActivityIndicator, 
   Alert, 
@@ -24,6 +24,8 @@ import { useAndroidNavigationBar } from '../../../../src/hooks/useAndroidNavigat
 import { useCart } from '../../../../src/context/CartContext'; 
 import { useAuth } from '../../../../src/context/AuthContext'; 
 import CartIcon from '../../../../src/components/CartIcon'; 
+import { useHistory } from '../../../../src/context/HistoryContext';
+import Toast from 'react-native-toast-message';
 
 import Animated, { 
   useSharedValue, 
@@ -35,7 +37,7 @@ import Animated, {
   interpolate
 } from 'react-native-reanimated';
 
-const { width, height } = Dimensions.get('window');
+const { width } = Dimensions.get('window');
 const CAROUSEL_WIDTH = width - 30; 
 const ANIMATION_DURATION = 800; 
 const MINIATURE_SIZE = 80;      
@@ -58,11 +60,22 @@ type ProductBackend = {
   stock: number;
 };
 
+type LocalCartItem = {
+    id: number;
+    name: string;
+    price: number;
+    quantity: number;
+    image: string;
+    shipping: number;
+};
+
+
 export default function ProductDetails() {
   const { id } = useLocalSearchParams(); 
   const router = useRouter();
   const { addToCart, cartItems } = useCart(); 
-  const { user } = useAuth(); 
+  const { user, isGuest } = useAuth(); 
+  const { addToHistory } = useHistory();
   
   const totalItems = cartItems.reduce((acc, item) => acc + (item.quantity || 1), 0);
   const [product, setProduct] = useState<ProductDetail | null>(null);
@@ -83,14 +96,23 @@ export default function ProductDetails() {
       try {
         const response = await api.get(`/api/product/${id}`);
         const data: ProductBackend = response.data;
-        setProduct({
+        const newProduct: ProductDetail = {
           id: data.id,
           name: data.title,
           price: data.price,
           description: data.description || "Sem descrição disponível.",
           images: data.imageURL && data.imageURL.length > 0 ? data.imageURL : [],
           stock: data.stock
+        };
+        setProduct(newProduct);
+
+        addToHistory({
+            id: newProduct.id,
+            title: newProduct.name,
+            price: newProduct.price,
+            image: newProduct.images[0] || 'placeholder'
         });
+
       } catch (error) {
         Alert.alert("Ops!", "Produto não encontrado.");
         router.back();
@@ -98,8 +120,10 @@ export default function ProductDetails() {
         setLoading(false);
       }
     };
-    if (id) fetchProductDetails();
-  }, [id, router]);
+    if (typeof id === 'string' || typeof id === 'number') {
+        fetchProductDetails();
+    }
+  }, [id, router, addToHistory]);
 
   const handleScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const slide = Math.ceil(event.nativeEvent.contentOffset.x / event.nativeEvent.layoutMeasurement.width);
@@ -107,7 +131,7 @@ export default function ProductDetails() {
   };
 
   const getAddressText = () => {
-    if (user && !user.isGuest && user.name) {
+    if (user && !(user as any).isGuest && user.name) {
       return `Enviar para ${user.name.split(' ')[0]}`;
     }
     return 'Enviar para Visitante - Informe seu CEP';
@@ -143,7 +167,7 @@ export default function ProductDetails() {
 
   const triggerFlyAnimation = (callback: () => void) => {
     const startX = width / 2 - (MINIATURE_SIZE / 2);
-    const startY = height / 2 + 50;
+    const startY = 300; 
     
     const destX = width - 50; 
     const destY = Platform.OS === 'ios' ? 50 : 25;
@@ -183,8 +207,19 @@ export default function ProductDetails() {
 
   const handleBuy = () => {
     if (!product) return;
+    
+    if (!user || isGuest) {
+        Toast.show({
+            type: 'info',
+            text1: 'Acesso Restrito',
+            text2: 'Faça login ou crie sua conta para prosseguir com a compra.',
+            visibilityTime: 4000
+        });
+        router.push('/(auth)/login' as any);
+        return;
+    }
 
-    const itemToAdd = {
+    const itemToAdd: LocalCartItem = {
       id: product.id,
       name: product.name,
       price: product.price,
@@ -193,7 +228,7 @@ export default function ProductDetails() {
       shipping: 0 
     };
 
-    addToCart(itemToAdd);
+    addToCart(itemToAdd as any); 
     router.push('/(aux)/shop/checkout' as any);
   };
 
@@ -205,7 +240,7 @@ export default function ProductDetails() {
     if (!product) return;
     
     triggerFlyAnimation(() => {
-      const itemToAdd = {
+      const itemToAdd: LocalCartItem = {
         id: product.id,
         name: product.name,
         price: product.price,
@@ -214,7 +249,7 @@ export default function ProductDetails() {
         shipping: 0 
       };
 
-      addToCart(itemToAdd);
+      addToCart(itemToAdd as any); 
     });
   };
 
@@ -235,7 +270,6 @@ export default function ProductDetails() {
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor={theme.colors.secondary} translucent={false} />
       
-      {/* Imagem Animada (Fantasma) */}
       {product.images.length > 0 && (
         <Animated.Image 
           source={{ uri: product.images[0] }} 
@@ -250,9 +284,7 @@ export default function ProductDetails() {
             <MaterialCommunityIcons name="arrow-left" size={24} color="#333" />
           </TouchableOpacity>
           
-          {/* --- CORREÇÃO AQUI --- */}
-          {/* Alterado para '/(tabs)' para evitar erro de tipo */}
-          <TouchableOpacity style={styles.searchBarHeader} onPress={() => router.push('/(tabs)' as any)}>
+          <TouchableOpacity style={styles.searchBarHeader} onPress={() => router.push('/(aux)/misc/search' as any)}>
             <MaterialCommunityIcons name="magnify" size={20} color="#999" style={styles.searchIcon} />
             <Text style={styles.searchTextHeader} numberOfLines={1}>Buscar no Mercado Souto</Text>
           </TouchableOpacity>
@@ -303,7 +335,8 @@ export default function ProductDetails() {
                 scrollEventThrottle={16}
                 renderItem={({ item }) => (
                   <View style={styles.carouselItem}>
-                    <Image 
+                    {/* USO CORRETO: RNImage */}
+                    <RNImage 
                       source={{ uri: item }} 
                       style={styles.productImage} 
                       resizeMode="contain" 
@@ -342,7 +375,7 @@ export default function ProductDetails() {
             <Text style={styles.variationLabel}>Cor: <Text style={styles.variationValue}>Padrão</Text></Text>
             <View style={styles.variationBox}>
               {product.images.length > 0 ? (
-                 <Image source={{ uri: product.images[0] }} style={styles.variationImage} />
+                 <RNImage source={{ uri: product.images[0] }} style={styles.variationImage} />
               ) : (
                  <MaterialCommunityIcons name="format-color-fill" size={24} color="#555" />
               )}

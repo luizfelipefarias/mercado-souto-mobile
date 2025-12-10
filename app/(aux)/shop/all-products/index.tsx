@@ -111,7 +111,7 @@ export default function AllProducts() {
 
           <Text style={styles.headerTitle}>Todos os produtos</Text>
 
-          {/* ROTA CORRIGIDA: Apontando para (aux)/shop/cart */}
+          {/* ROTA CORRETA: Apontando para /aux/shop/cart */}
           <TouchableOpacity onPress={() => router.push('/(aux)/shop/cart' as any)} style={{ padding: 5 }}>
             <MaterialCommunityIcons name="cart-outline" size={24} color="#333" />
           </TouchableOpacity>

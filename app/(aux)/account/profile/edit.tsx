@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import {
   View,
-  TextInput,
   StyleSheet,
   TouchableOpacity,
   Alert,
@@ -11,62 +10,91 @@ import {
   KeyboardAvoidingView,
   ScrollView
 } from 'react-native';
-import { Text } from 'react-native-paper';
+import { Text, Button } from 'react-native-paper';
 import { useRouter } from 'expo-router';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { theme } from '../../../../src/constants/theme';
 import { useAuth } from '../../../../src/context/AuthContext';
 import api from '../../../../src/services/api';
+import { TextInput as RNTextInput } from 'react-native'; 
+import Toast from 'react-native-toast-message';
 
 export default function EditProfile() {
   const router = useRouter();
-  const { user, setUser } = useAuth();
+  const { user, refreshUserProfile, isGuest } = useAuth(); 
+  
+  const currentName = user?.name || '';
+  const currentEmail = user?.email || '';
 
-  const [name, setName] = useState(user?.name || '');
-  const [email, setEmail] = useState(user?.email || '');
+  const [name, setName] = useState(currentName);
+  const [email, setEmail] = useState(currentEmail);
   const [loading, setLoading] = useState(false);
+
+  const hasChanges = name !== currentName || email !== currentEmail;
+
 
   const handleSave = async () => {
     if (!name.trim() || !email.trim()) {
       Alert.alert('Atenção', 'Preencha todos os campos.');
       return;
     }
+    
+    if (!hasChanges) {
+      Toast.show({ type: 'info', text1: 'Nenhuma alteração detectada.' });
+      router.back();
+      return;
+    }
 
     setLoading(true);
 
     try {
-      const userId = (user as any)?.id;
+      const userId = user?.id;
 
-      const currentDataResponse = await api.get(`/api/client/${userId}`);
-      const currentData = currentDataResponse.data;
-
+      if (!userId) {
+        Alert.alert('Erro', 'Sessão inválida. Faça login novamente.');
+        return;
+      }
+      
       const updatedData = {
-        ...currentData,
         name: name,
-        email: email
+        email: email,
+        cpf: user?.cpf,
+        phone: user?.phone,
       };
 
       await api.put(`/api/client/${userId}`, updatedData);
-
-      if (setUser) {
-        setUser({
-          ...user,
-          name: name,
-          email: email
-        } as any);
-      }
-
-      Alert.alert('Sucesso', 'Dados atualizados com sucesso!', [
-        { text: 'OK', onPress: () => router.back() }
-      ]);
+      
+      
+      Toast.show({ type: 'success', text1: 'Sucesso!', text2: 'Dados atualizados.' });
+      
+      router.back();
 
     } catch (error) {
       console.error("Erro ao atualizar perfil:", error);
-      Alert.alert('Erro', 'Não foi possível salvar os dados. Verifique sua conexão.');
+      Toast.show({ type: 'error', text1: 'Erro', text2: 'Não foi possível salvar os dados.' });
     } finally {
       setLoading(false);
     }
   };
+
+  if (isGuest) {
+      return (
+          <SafeAreaView style={styles.container}>
+              <View style={styles.header}>
+                  <TouchableOpacity onPress={() => router.back()} style={{ padding: 10 }}>
+                      <MaterialCommunityIcons name="arrow-left" size={24} color="#333" />
+                  </TouchableOpacity>
+                  <Text style={styles.headerTitle}>Meus dados</Text>
+                  <View style={{ width: 44 }} />
+              </View>
+              <View style={styles.guestMessage}>
+                  <MaterialCommunityIcons name="lock" size={60} color="#ccc" />
+                  <Text style={styles.guestText}>Faça login para editar seus dados de perfil.</Text>
+              </View>
+          </SafeAreaView>
+      );
+  }
+
 
   return (
     <SafeAreaView style={styles.container}>
@@ -86,36 +114,52 @@ export default function EditProfile() {
       >
         <ScrollView contentContainerStyle={styles.form}>
           <Text style={styles.label}>Nome completo</Text>
-          <TextInput
+          <RNTextInput 
             style={styles.input}
             value={name}
             onChangeText={setName}
             placeholder="Digite seu nome"
-            placeholderTextColor="#ccc"
+            placeholderTextColor="#999"
           />
 
           <Text style={styles.label}>E-mail</Text>
-          <TextInput
+          <RNTextInput 
             style={styles.input}
             value={email}
             onChangeText={setEmail}
             keyboardType="email-address"
             autoCapitalize="none"
             placeholder="Digite seu e-mail"
-            placeholderTextColor="#ccc"
+            placeholderTextColor="#999"
           />
+
+          {/* Dados não editáveis */}
+          <Text style={styles.label}>CPF</Text>
+          <RNTextInput
+            style={[styles.input, styles.disabledInput]}
+            value={user?.cpf || 'Não informado'}
+            editable={false}
+          />
+          
+          <Text style={styles.label}>Telefone</Text>
+          <RNTextInput
+            style={[styles.input, styles.disabledInput]}
+            value={user?.phone || 'Não informado'}
+            editable={false}
+          />
+
 
           <View style={styles.infoBox}>
             <MaterialCommunityIcons name="information-outline" size={20} color="#666" style={{marginRight: 8}}/>
             <Text style={styles.infoText}>
-              Para mudar o CPF ou Documento, entre em contato com o suporte.
+              Para mudar o CPF ou Telefone, entre em contato com o suporte.
             </Text>
           </View>
 
           <TouchableOpacity
-            style={[styles.saveBtn, loading && { opacity: 0.7 }]}
+            style={[styles.saveBtn, loading || !hasChanges ? { opacity: 0.5, backgroundColor: theme.colors.primary } : {backgroundColor: theme.colors.primary}]}
             onPress={handleSave}
-            disabled={loading}
+            disabled={loading || !hasChanges}
           >
             {loading ? (
               <ActivityIndicator color="#FFF" />
@@ -140,7 +184,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 5,
+    paddingHorizontal: 15,
     paddingBottom: 10,
     backgroundColor: theme.colors.secondary,
     paddingTop: 10
@@ -169,6 +213,13 @@ const styles = StyleSheet.create({
     fontSize: 16,
     paddingVertical: 8,
     color: '#333'
+  },
+  
+  disabledInput: {
+      color: '#aaa',
+      backgroundColor: '#f9f9f9',
+      borderBottomWidth: 0,
+      paddingVertical: 10
   },
 
   infoBox: {
@@ -201,5 +252,19 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: 'bold'
+  },
+  
+  guestMessage: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+      padding: 40,
+      backgroundColor: '#fff'
+  },
+  guestText: {
+      marginTop: 15,
+      fontSize: 16,
+      color: '#666',
+      textAlign: 'center'
   }
 });

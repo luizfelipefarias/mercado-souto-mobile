@@ -3,63 +3,80 @@ import { useRouter } from 'expo-router';
 import React, { createContext, ReactNode, useContext, useEffect, useState, useCallback } from 'react';
 import { Alert } from 'react-native';
 import api from '../services/api';
+import { Client, LoginResponse, Cart } from '../interfaces'; 
 
-type User = {
-  id?: number;
-  name?: string;
-  email: string;
-  token: string;
-  phone?: string;
-  cpf?: string;
-  isGuest?: boolean;
-};
+const STORAGE_TOKEN = '@auth_token';
+const STORAGE_USER = '@user_data';
+const STORAGE_GUEST = '@is_guest';
 
 interface AuthContextData {
   signed: boolean;
-  user: User | null;
+  user: Client | null;
   loading: boolean;
-  signIn: (email: string, password: string) => Promise<any>;
-  signUp: (clientData: any) => Promise<any>;
+  isGuest: boolean;
+  signIn: (email: string, password: string) => Promise<void>;
+  signUp: (clientData: any) => Promise<void>;
   loginAsGuest: () => Promise<void>;
   signOut: () => Promise<void>;
-  setUser: React.Dispatch<React.SetStateAction<User | null>>;
+  refreshUserProfile: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextData>({} as AuthContextData);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<Client | null>(null);
+  const [isGuest, setIsGuest] = useState(false);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
 
-  const STORAGE_TOKEN = '@auth_token';
-  const STORAGE_USER = '@user_data';
+  const fetchClientData = async (email: string): Promise<Client | null> => {
+    try {
+      const response = await api.get<Client[]>('/api/client');
+      const foundClient = response.data.find(c => c.email === email);
+      return foundClient || null;
+    } catch (error) {
+      console.log('Erro ao buscar dados do cliente:', error);
+      return null;
+    }
+  };
+
+  const refreshUserProfile = async () => {
+    if (!user?.email || isGuest) return;
+    const updatedClient = await fetchClientData(user.email);
+    if (updatedClient) {
+      setUser(updatedClient);
+      await AsyncStorage.setItem(STORAGE_USER, JSON.stringify(updatedClient));
+    }
+  };
 
   const signOut = useCallback(async () => {
     try {
-      await AsyncStorage.multiRemove([STORAGE_TOKEN, STORAGE_USER, '@user_email']);
+      await AsyncStorage.multiRemove([STORAGE_TOKEN, STORAGE_USER, STORAGE_GUEST]);
       api.defaults.headers.Authorization = null;
       setUser(null);
+      setIsGuest(false);
       router.replace('/');
     } catch (error) {
       console.log("Erro ao sair:", error);
     }
-  }, [router]); 
+  }, [router]);
 
   useEffect(() => {
     async function loadStorageData() {
       try {
-        const storageToken = await AsyncStorage.getItem(STORAGE_TOKEN);
-        const storageUser = await AsyncStorage.getItem(STORAGE_USER);
+        const [token, storedUser, guestFlag] = await AsyncStorage.multiGet([
+          STORAGE_TOKEN, 
+          STORAGE_USER,
+          STORAGE_GUEST
+        ]);
 
-        if (storageToken && storageUser) {
-          const parsedUser = JSON.parse(storageUser);
-          
-          api.defaults.headers.Authorization = `Bearer ${storageToken}`;
-          setUser(parsedUser);
-        } else if (storageUser) {
-            const parsedUser = JSON.parse(storageUser);
-            if(parsedUser.isGuest) setUser(parsedUser);
+        if (guestFlag[1] === 'true') {
+          setIsGuest(true);
+          setUser({ name: 'Visitante', id: null, cart: null } as unknown as Client); 
+        } else if (token[1] && storedUser[1]) {
+          api.defaults.headers.Authorization = `Bearer ${token[1]}`;
+          setUser(JSON.parse(storedUser[1]));
+          setIsGuest(false);
         }
       } catch (error) {
         console.log("Erro ao carregar sessão:", error);
@@ -67,63 +84,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setLoading(false);
       }
     }
-
     loadStorageData();
-  }, []); 
-
-  useEffect(() => {
-    const interceptorId = api.interceptors.response.use(
-      (response) => response,
-      async (error) => {
-        if (user?.isGuest) return Promise.reject(error);
-
-        if (error.response?.status === 401 || error.response?.status === 403) {
-          if (user) { 
-            console.log("Sessão expirada. Saindo...");
-            await signOut();
-            Alert.alert("Sessão Expirada", "Faça login novamente.");
-          }
-        }
-        return Promise.reject(error);
-      }
-    );
-
-    return () => {
-      api.interceptors.response.eject(interceptorId);
-    };
-  }, [user, signOut]);
+  }, []);
 
   const signIn = async (email: string, password: string) => {
     setLoading(true);
     try {
-      const response = await api.post('/api/login', {
-        email: email, 
-        password: password
-      });
+      const authResponse = await api.post('/api/login', { email, password });
+      const token = authResponse.data.token || authResponse.data;
 
-      const token = response.data.token || response.data; 
-      
-      const userData: User = { 
-        id: response.data.id || 1,
-        name: response.data.name || 'Usuário',
-        email, 
-        token,
-        isGuest: false
-      };
+      if (!token) throw new Error("Token não fornecido pela API");
 
       api.defaults.headers.Authorization = `Bearer ${token}`;
-      
       await AsyncStorage.setItem(STORAGE_TOKEN, token);
-      await AsyncStorage.setItem(STORAGE_USER, JSON.stringify(userData));
-      
-      await AsyncStorage.setItem('@user_email', email); 
 
-      setUser(userData);
+      const clientData = await fetchClientData(email);
       
-      return response.data; 
+      if (!clientData) {
+        throw new Error("Cliente não encontrado na base de dados.");
+      }
+
+      await AsyncStorage.setItem(STORAGE_USER, JSON.stringify(clientData));
+      await AsyncStorage.removeItem(STORAGE_GUEST);
+      
+      setUser(clientData);
+      setIsGuest(false);
+      router.replace('/(tabs)');
 
     } catch (error: any) {
-      throw error;
+      console.log('Erro Login:', error);
+      Alert.alert('Erro', 'Verifique suas credenciais.');
+      api.defaults.headers.Authorization = null;
     } finally {
       setLoading(false);
     }
@@ -132,11 +123,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signUp = async (clientData: any) => {
     setLoading(true);
     try {
-      const response = await api.post('/api/client', clientData);
-      
-      return response.data;
+      await api.post('/api/client', clientData);
+      Alert.alert('Sucesso', 'Conta criada! Faça login.');
+      router.back();
     } catch (error) {
-      throw error;
+      console.log('Erro Cadastro:', error);
+      Alert.alert('Erro', 'Falha ao criar conta.');
     } finally {
       setLoading(false);
     }
@@ -145,23 +137,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const loginAsGuest = async () => {
     setLoading(true);
     try {
-      const guestUser: User = {
-        id: 0,
-        name: 'Visitante',
-        email: 'visitante@app.com',
-        token: 'guest-token',
-        isGuest: true,
-      };
-
-      await AsyncStorage.setItem(STORAGE_USER, JSON.stringify(guestUser));
-      await AsyncStorage.setItem('@user_email', guestUser.email);
+      await AsyncStorage.setItem(STORAGE_GUEST, 'true');
+      await AsyncStorage.multiRemove([STORAGE_TOKEN, STORAGE_USER]);
       
-      setUser(guestUser);
       api.defaults.headers.Authorization = null;
-
+      setIsGuest(true);
+      setUser({ name: 'Visitante', id: null, cart: null } as unknown as Client);
+      
       router.replace('/(tabs)');
     } catch (error) {
-      console.log('Erro ao entrar como visitante', error);
+      console.log(error);
     } finally {
       setLoading(false);
     }
@@ -169,14 +154,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider value={{ 
-      signed: !!user, 
+      signed: !!user && !isGuest, 
       user, 
+      isGuest,
+      loading,
       signIn, 
       signUp, 
       loginAsGuest, 
-      signOut, 
-      loading,
-      setUser 
+      signOut,
+      refreshUserProfile
     }}>
       {children}
     </AuthContext.Provider>

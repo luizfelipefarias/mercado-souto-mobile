@@ -2,16 +2,17 @@ import { useEffect } from 'react';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { PaperProvider } from 'react-native-paper';
 import Toast from 'react-native-toast-message';
-import { theme } from '@/constants/theme'; 
 
-import { AuthProvider, useAuth } from '@/context/AuthContext';
-import { CartProvider } from '@/context/CartContext';
-import { ProductProvider } from '@/context/ProductContext';
-import { UserProvider } from '@/context/UserContext';
-import { OrderProvider } from '@/context/OrderContext';
+import { theme } from '../src/constants/theme'; 
+import { HistoryProvider } from '../src/context/HistoryContext'; 
+import { AuthProvider, useAuth } from '../src/context/AuthContext';
+import { CartProvider } from '../src/context/CartContext';
+import { ProductProvider } from '../src/context/ProductContext';
+import { UserProvider } from '../src/context/UserContext';
+import { OrderProvider } from '../src/context/OrderContext';
 
 function RootNavigation() {
-  const { user, loading } = useAuth();
+  const { user, loading, isGuest } = useAuth();
   const segments = useSegments();
   const router = useRouter();
 
@@ -19,26 +20,28 @@ function RootNavigation() {
     if (loading) return;
     
     const currentSegment = segments[0] as string; 
-    
     const inAuthGroup = currentSegment === '(auth)';
     
-    if (user && inAuthGroup) {
+    if (user && !isGuest && inAuthGroup) {
       router.replace('/(tabs)'); 
     } 
     
-    else if (!user && currentSegment !== '(auth)' && segments.length > 0) {
+    const isProtectedRoute = !inAuthGroup && currentSegment !== 'index' && currentSegment !== undefined;
+
+    if (!user && !isGuest && isProtectedRoute) {
+        router.replace('/(auth)/login');
     }
-  }, [user, loading, segments, router]);
+
+  }, [user, loading, segments, router, isGuest]);
 
   return (
     <Stack screenOptions={{ headerShown: false }}>
-      {/* Telas Principais */}
+
       <Stack.Screen name="index" />
       <Stack.Screen name="(auth)" />
       <Stack.Screen name="(tabs)" />
 
-      {/* --- GRUPO SHOP --- */}
-      {/* Modal para o Carrinho */}
+      {/* --- GRUPO SHOP (Compras/Produtos) --- */}
       <Stack.Screen 
         name="(aux)/shop/cart/index" 
         options={{ 
@@ -52,10 +55,11 @@ function RootNavigation() {
       <Stack.Screen name="(aux)/shop/my-purchases/index" />
       <Stack.Screen name="(aux)/shop/history/index" />
       <Stack.Screen name="(aux)/shop/product/[id]" />
+      <Stack.Screen name="(aux)/account/order/[id]" />
 
-      {/* --- GRUPO ACCOUNT --- */}
+
+
       <Stack.Screen name="(aux)/account/profile/index" />
-      <Stack.Screen name="(aux)/account/wallet/index" />
       
       <Stack.Screen name="(aux)/account/profile/edit" />
       <Stack.Screen name="(aux)/account/profile/security" />
@@ -65,17 +69,14 @@ function RootNavigation() {
       <Stack.Screen name="(aux)/account/address/index" />
       <Stack.Screen name="(aux)/account/address/form" />
 
-      <Stack.Screen name="(aux)/account/order/[id]" />
 
-      {/* --- GRUPO MISC --- */}
-      {/* Animação suave para a busca */}
+
       <Stack.Screen 
         name="(aux)/misc/search/index" 
         options={{ animation: 'fade' }} 
       />
       <Stack.Screen name="(aux)/misc/search-results/index" />
       <Stack.Screen name="(aux)/misc/help/index" />
-      <Stack.Screen name="(aux)/misc/mercado-play/index" />
       <Stack.Screen name="(aux)/misc/review/[id]" />
 
     </Stack>
@@ -89,10 +90,12 @@ export default function RootLayout() {
         <ProductProvider>
           <CartProvider>
             <OrderProvider>
-              <PaperProvider theme={theme}>
-                <RootNavigation />
-                <Toast />
-              </PaperProvider>
+              <HistoryProvider>
+                <PaperProvider theme={theme}>
+                  <RootNavigation />
+                  <Toast />
+                </PaperProvider>
+              </HistoryProvider>
             </OrderProvider>
           </CartProvider>
         </ProductProvider>

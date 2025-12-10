@@ -15,8 +15,9 @@ export const theme = {
     background: '#f5f5f5',    
     surface: '#FFFFFF',       
     error: '#d63031',
-    text: '#333333',
+    onSurface: '#333333',     
     placeholder: '#999999',
+    text: '#333333', 
   },
 };
 export const Colors = {

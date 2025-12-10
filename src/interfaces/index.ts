@@ -13,26 +13,12 @@ export interface Seller {
 export interface Product {
   id: number;
   title: string;
-  description: string;
   specification?: string;
+  description: string;
   price: number;
   stock: number;
   imageURL: string[];
   category?: Category;
-  seller?: Seller;
-}
-
-export interface Client {
-  id: number;
-  name: string;
-  email: string;
-  cpf: string;
-  phone: string;
-  user?: {
-    id: number;
-    username: string;
-    enabled: boolean;
-  };
   seller?: Seller;
 }
 
@@ -46,33 +32,54 @@ export interface Address {
   home: boolean;
   contactName?: string;
   contactPhone?: string;
-  client?: Client;
-  
-  city?: string;
-  state?: string;
-  neighborhood?: string;
 }
 
-export interface LoginResponse {
-  token: string;
-}
-
-export interface SessionUser {
-  id?: number;
-  name?: string;
-  email: string;
-  token: string;
-  phone?: string;
-  cpf?: string;
-  isGuest?: boolean;
-  isAdmin?: boolean;
+export interface UserAuth {
+  id: number;
+  username: string;
+  enabled: boolean;
+  authorities: Array<{ authority: string }>;
+  accountNonExpired?: boolean;
+  accountNonLocked?: boolean;
+  credentialsNonExpired?: boolean;
 }
 
 export interface CartItem {
   id: number;
-  name: string;
-  price: number;
-  image: string;
+  isSelected: boolean;
   quantity: number;
-  shipping?: number;
+  subtotal: number;
+  product: Product;
+}
+
+export interface Cart {
+  id: number;
+  totalPrice: number;
+  items: CartItem[];
+}
+
+export interface Client {
+  id: number | null;
+  name: string;
+  email?: string;
+  cpf?: string;
+  phone?: string;
+  
+  user?: UserAuth;
+  seller?: Seller;
+  addresses?: Address[];
+  cart?: Cart | null;
+}
+
+
+export interface LoginResponse {
+  token: string; 
+}
+
+export interface ClientRequest {
+  name: string;
+  email: string;
+  password?: string;
+  cpf: string;
+  phone: string;
 }

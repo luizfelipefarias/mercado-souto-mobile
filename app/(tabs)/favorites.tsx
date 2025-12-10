@@ -17,6 +17,12 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { theme } from '../../src/constants/theme';
 import api from '../../src/services/api';
 import { useCart } from '../../src/context/CartContext'; 
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import Toast from 'react-native-toast-message';
+
+
+const STORAGE_KEY = '@MercadoSouto:Favorites';
+
 type Product = {
   id: number;
   title: string;
@@ -30,32 +36,77 @@ export default function Favorites() {
 
   const [favorites, setFavorites] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
+  const [favoriteIds, setFavoriteIds] = useState<number[]>([]); 
+
+
+  const loadFavoriteIds = useCallback(async () => {
+    try {
+      const storedIds = await AsyncStorage.getItem(STORAGE_KEY);
+      if (storedIds) {
+        setFavoriteIds(JSON.parse(storedIds));
+        return JSON.parse(storedIds);
+      }
+    } catch (error) {
+      console.log('Erro ao carregar IDs favoritos:', error);
+    }
+    return [];
+  }, []);
+
 
   useEffect(() => {
     let mounted = true;
 
-    async function loadFavorites() {
+    async function loadFavoritesData() {
+      const ids = await loadFavoriteIds();
+
+      if (ids.length === 0) {
+          if (mounted) setLoading(false);
+          return;
+      }
+      
       try {
-       
+
         const response = await api.get('/api/product');
+        const allProducts = Array.isArray(response.data) ? response.data : [];
+
+        const favoriteProducts = allProducts
+          .filter((p: any) => ids.includes(p.id))
+          .map((p: any) => ({
+            id: p.id,
+            title: p.title,
+            price: Number(p.price),
+            imageURL: p.imageURL || [],
+          }));
+
         if (mounted) {
-  
-          setFavorites(Array.isArray(response.data) ? response.data.slice(0, 5) : []);
+          setFavorites(favoriteProducts);
         }
       } catch (error) {
-        console.log('Erro ao carregar favoritos:', error);
+        console.log('Erro ao carregar dados dos favoritos:', error);
       } finally {
         if (mounted) setLoading(false);
       }
     }
 
-    loadFavorites();
+    loadFavoritesData();
 
     return () => {
       mounted = false;
     };
+  }, [loadFavoriteIds]);
+
+
+
+  const saveFavoriteIds = useCallback(async (newIds: number[]) => {
+    setFavoriteIds(newIds);
+    try {
+      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(newIds));
+    } catch (error) {
+      console.log('Erro ao salvar IDs favoritos:', error);
+    }
   }, []);
 
+  
   const handleOpenProduct = useCallback(
     (id: number) => {
       router.push(`/(aux)/shop/product/${id}` as any);
@@ -63,15 +114,33 @@ export default function Favorites() {
     [router],
   );
 
-  const handleRemoveFavorite = (id: number) => {
-    Alert.alert("Remover", "Deseja remover este item dos favoritos?", [
-        { text: "Cancelar", style: "cancel" },
-        { 
-            text: "Sim", 
-            onPress: () => setFavorites(prev => prev.filter(item => item.id !== id))
+
+  const handleRemoveFavorite = useCallback((id: number) => {
+    const message = "Deseja remover este item dos favoritos?";
+    
+    const performRemoval = () => {
+        setFavorites(prev => prev.filter(item => item.id !== id));
+        const newIds = favoriteIds.filter(favId => favId !== id);
+        saveFavoriteIds(newIds);
+        Toast.show({ type: 'success', text1: 'Removido dos favoritos.' });
+    };
+    
+
+    if (Platform.OS === 'web') {
+        if (window.confirm(message)) {
+            performRemoval();
         }
-    ]);
-  };
+    } else {
+        Alert.alert("Remover", message, [
+            { text: "Cancelar", style: "cancel" },
+            { 
+                text: "Sim", 
+                style: "destructive",
+                onPress: performRemoval
+            }
+        ]);
+    }
+  }, [favoriteIds, saveFavoriteIds]);
 
   const renderItem = useCallback(
     ({ item }: { item: Product }) => {
@@ -112,8 +181,11 @@ export default function Favorites() {
           </TouchableOpacity>
         );
     },
-    [handleOpenProduct],
+    [handleOpenProduct, handleRemoveFavorite],
   );
+  
+
+  const cartItemCount = cartItems.reduce((sum, item) => sum + item.quantity, 0);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -124,9 +196,9 @@ export default function Favorites() {
 
         <TouchableOpacity onPress={() => router.push('/(aux)/shop/cart' as any)} style={{ padding: 5 }}>
             <MaterialCommunityIcons name="cart-outline" size={24} color="#333" />
-            {cartItems.length > 0 && (
+            {cartItemCount > 0 && (
                 <View style={styles.badge}>
-                    <Text style={styles.badgeText}>{cartItems.length}</Text>
+                    <Text style={styles.badgeText}>{cartItemCount}</Text>
                 </View>
             )}
         </TouchableOpacity>
@@ -149,7 +221,7 @@ export default function Favorites() {
             <View style={styles.emptyContainer}>
                 <MaterialCommunityIcons name="heart-broken" size={60} color="#ddd" />
                 <Text style={styles.emptyText}>Você não tem favoritos ainda.</Text>
-                <TouchableOpacity onPress={() => router.push('/(tabs)')}>
+                <TouchableOpacity onPress={() => router.push('/(tabs)' as any)}>
                     <Text style={styles.linkText}>Descobrir produtos</Text>
                 </TouchableOpacity>
             </View>

@@ -17,66 +17,74 @@ import { Text } from 'react-native-paper';
 import { theme } from '../../../../src/constants/theme';
 import { useAuth } from '../../../../src/context/AuthContext';
 import { useAndroidNavigationBar } from '../../../../src/hooks/useAndroidNavigationBar';
+import Toast from 'react-native-toast-message';
 
 type ProfileOption = {
   label: string;
   icon: keyof typeof MaterialCommunityIcons.glyphMap;
   route?: string;
+  action?: () => void;
 };
 
 export default function Profile() {
   const router = useRouter();
-  const { user, signOut } = useAuth();
+  const { user, signOut, isGuest } = useAuth();
 
   useAndroidNavigationBar(true);
 
-  useEffect(() => {
-    if (Platform.OS !== 'android') return;
 
-    NavigationBar.setVisibilityAsync('hidden');
-    NavigationBar.setBehaviorAsync('overlay-swipe');
-
-    return () => {
-      NavigationBar.setVisibilityAsync('visible');
-    };
-  }, []);
 
   const options: ProfileOption[] = useMemo(
     () => [
-      { label: 'Meus dados', icon: 'account-cog-outline', route: '/(aux)/account/profile' },
-      { label: 'Segurança', icon: 'shield-check-outline', route: '/(aux)/account/security' },
-      { label: 'Cartões', icon: 'credit-card-outline', route: '/(aux)/wallet' },
+      { label: 'Meus dados', icon: 'account-cog-outline', route: '/(aux)/account/profile/edit' },
+      
+      { label: 'Segurança', icon: 'shield-check-outline', route: '/(aux)/account/profile/security' },
+      
       { label: 'Endereços', icon: 'map-marker-outline', route: '/(aux)/account/address' },
-      { label: 'Privacidade', icon: 'lock-outline', route: '/(aux)/account/privacy' },
+      
+      { label: 'Privacidade', icon: 'lock-outline', route: '/(aux)/account/profile/privacy' },
+
     ],
     []
   );
 
   const handleLogout = useCallback(() => {
-    Alert.alert(
-      'Sair da conta',
-      'Tem certeza que deseja sair do Mercado Souto?',
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Sair',
-          style: 'destructive',
-          onPress: async () => {
-            await signOut();
-            router.replace('/'); 
-          },
-        },
-      ]
-    );
+    const performLogout = async () => {
+        await signOut();
+        router.replace('/'); 
+        Toast.show({ type: 'info', text1: 'Sessão encerrada' });
+    };
+
+    if (Platform.OS !== 'web') {
+        Alert.alert(
+          'Sair da conta',
+          'Tem certeza que deseja sair do Mercado Souto?',
+          [
+            { text: 'Cancelar', style: 'cancel' },
+            { text: 'Sair', style: 'destructive', onPress: performLogout },
+          ]
+        );
+    } else {
+        if (window.confirm('Tem certeza que deseja sair do Mercado Souto?')) {
+            performLogout();
+        }
+    }
   }, [router, signOut]);
+
 
   const handleNavigation = useCallback(
     (item: ProfileOption) => {
+      if (item.action) {
+        item.action();
+        return;
+      }
+      
       if (!item.route) {
-        Alert.alert(
-          'Em breve',
-          `A funcionalidade "${item.label}" estará disponível na próxima atualização.`
-        );
+        Toast.show({
+          type: 'info',
+          text1: 'Em breve',
+          text2: `A funcionalidade "${item.label}" estará disponível em breve.`,
+        });
         return;
       }
 
@@ -85,9 +93,10 @@ export default function Profile() {
     [router]
   );
 
-  const userName = (user as any)?.name || 'Visitante';
+  const userName = user?.name || 'Visitante';
   const userEmail = user?.email || 'Faça login para ver seus dados';
   const userAvatar = null; 
+  const userIsGuest = isGuest;
 
   return (
     <View style={styles.container}>
@@ -124,6 +133,9 @@ export default function Profile() {
               <Text style={styles.userEmail} numberOfLines={1}>
                 {userEmail}
               </Text>
+              {userIsGuest && (
+                 <Text style={{color: '#ff3e3e', fontSize: 13}}>Você está como Visitante</Text>
+              )}
             </View>
           </View>
         </SafeAreaView>
@@ -205,6 +217,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginRight: 15,
     overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#eee',
   },
 
   avatarImage: {

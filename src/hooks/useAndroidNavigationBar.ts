@@ -8,12 +8,16 @@ export function useAndroidNavigationBar(hidden: boolean = true) {
       if (hidden) {
         NavigationBar.setVisibilityAsync('hidden');
         NavigationBar.setBehaviorAsync('overlay-swipe');
+      } else {
+        NavigationBar.setVisibilityAsync('visible');
+        NavigationBar.setBehaviorAsync('inset-swipe');
       }
     }
 
     return () => {
       if (Platform.OS === 'android') {
-        NavigationBar.setVisibilityAsync('hidden');
+        NavigationBar.setVisibilityAsync('visible');
+        NavigationBar.setBehaviorAsync('inset-swipe'); 
       }
     };
   }, [hidden]);

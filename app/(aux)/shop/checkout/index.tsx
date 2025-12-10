@@ -17,6 +17,13 @@ import { theme } from '../../../../src/constants/theme';
 import { useCart } from '../../../../src/context/CartContext';
 import { useAuth } from '../../../../src/context/AuthContext';
 import api from '../../../../src/services/api';
+import { Address } from '../../../../src/interfaces'; 
+
+type DisplayAddress = Address & {
+    city?: string;
+    state?: string;
+    neighborhood?: string;
+};
 
 export default function Checkout() {
   const router = useRouter();
@@ -26,24 +33,32 @@ export default function Checkout() {
   const [paymentMethod, setPaymentMethod] = useState<'pix' | 'card'>('pix');
   const [loading, setLoading] = useState(false);
   const [loadingAddress, setLoadingAddress] = useState(false);
-  const [address, setAddress] = useState<any | null>(null);
+  const [address, setAddress] = useState<DisplayAddress | null>(null);
 
   const total = useMemo(
     () =>
-      cartItems.reduce((sum, item) => sum + (item.price * (item.quantity || 1)), 0),
+      cartItems.reduce((sum, item) => sum + (item.product.price * (item.quantity || 1)), 0),
     [cartItems]
   );
 
   useEffect(() => {
     async function loadAddress() {
       const userId = (user as any)?.id;
-      if (!userId) return;
+      if (!userId || !signed) return;
       
       setLoadingAddress(true);
       try {
-        const res = await api.get<any[]>(`/api/address/by-client/${userId}`);
+        const res = await api.get<Address[]>(`/api/address/by-client/${userId}`);
+        
         if (Array.isArray(res.data) && res.data.length > 0) {
-          setAddress(res.data[0]);
+          const apiAddress = res.data[0];
+          const displayAddress: DisplayAddress = {
+              ...apiAddress,
+              neighborhood: apiAddress.additionalInfo,
+              city: "São Paulo",
+              state: "SP",
+          };
+          setAddress(displayAddress);
         } else {
           setAddress(null);
         }
@@ -55,7 +70,7 @@ export default function Checkout() {
       }
     }
     loadAddress();
-  }, [user]);
+  }, [user, signed]);
 
   const handleFinish = async () => {
     if (!signed || (user as any)?.isGuest) {
@@ -92,9 +107,9 @@ export default function Checkout() {
       const orderData = {
         clientId: (user as any)?.id,
         items: cartItems.map((item) => ({
-          productId: item.id,
+          productId: item.product.id,
           quantity: item.quantity || 1,
-          price: item.price,
+          price: item.product.price,
         })),
         addressId: address.id,
         total: Number(total.toFixed(2)),
@@ -147,7 +162,10 @@ export default function Checkout() {
               ) : address ? (
                 <>
                   <Text style={{ fontWeight: 'bold' }}>{address.street}, {address.number}</Text>
-                  <Text style={{ color: '#666' }}>{address.neighborhood} - {address.city}/{address.state}</Text>
+                  {/* 🟢 CORREÇÃO 2: Usando neighborhood (mock) e city/state (mock) */}
+                  <Text style={{ color: '#666' }}>
+                    {address.neighborhood} - {address.city}/{address.state}
+                  </Text>
                   <Text style={{ color: '#666', fontSize: 12 }}>{(user as any)?.name || 'Destinatário'}</Text>
                 </>
               ) : (
@@ -158,7 +176,6 @@ export default function Checkout() {
               )}
             </View>
             
-            {/* ROTA CORRIGIDA: Endereço */}
             <TouchableOpacity onPress={() => router.push('/(aux)/account/address' as any)}>
               <Text style={styles.link}>Trocar</Text>
             </TouchableOpacity>

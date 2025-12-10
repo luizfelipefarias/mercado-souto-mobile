@@ -39,11 +39,11 @@ export default function SearchResults() {
       setLoading(true);
       setError(false);
 
-      
+
       const response = await api.get('/api/product');
       
-      
       const products: Product[] = Array.isArray(response.data) ? response.data : [];
+
 
       const filtered = products.filter(product =>
         product.title.toLowerCase().includes(searchTerm)
@@ -64,14 +64,13 @@ export default function SearchResults() {
 
   const handleOpenProduct = useCallback(
     (id: number) => {
-      router.push(`/product/${id}` as any);
+      router.push(`/(aux)/shop/product/${id}` as any);
     },
     [router]
   );
 
   const renderItem = useCallback(
     ({ item }: { item: Product }) => {
-      // Define imagem ou placeholder
       const imageUri = (item.imageURL && item.imageURL.length > 0) 
         ? item.imageURL[0] 
         : 'https://via.placeholder.com/150';
@@ -131,6 +130,7 @@ export default function SearchResults() {
       <StatusBar barStyle="dark-content" backgroundColor={theme.colors.secondary} />
 
       <View style={styles.header}>
+
         <TouchableOpacity onPress={() => router.back()} style={styles.inputMock}>
           <MaterialCommunityIcons name="arrow-left" size={24} color="#666" style={{marginRight: 10}}/>
           <Text style={styles.searchText} numberOfLines={1}>
@@ -139,7 +139,7 @@ export default function SearchResults() {
           <MaterialCommunityIcons name="close" size={20} color="#999" style={{ marginLeft: 'auto' }}/>
         </TouchableOpacity>
 
-        <TouchableOpacity onPress={() => router.push('/cart' as any)} style={{padding: 5}}>
+        <TouchableOpacity onPress={() => router.push('/(aux)/shop/cart' as any)} style={{padding: 5}}>
           <MaterialCommunityIcons name="cart-outline" size={26} color="#333" />
         </TouchableOpacity>
       </View>

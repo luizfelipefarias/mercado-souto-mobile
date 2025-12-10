@@ -9,31 +9,26 @@ import {
   ActivityIndicator,
   RefreshControl,
   Platform,
-  // 1. IMPORTANTE: Alias para evitar conflito com HTML Image no Web
-  Image as RNImage 
+  Image as RNImage, 
 } from 'react-native';
-import { Badge, Text, Button } from 'react-native-paper';
+import { Text, Button, Badge } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import api from '../../src/services/api';
 import { useAuth } from '../../src/context/AuthContext';
 import { useCart } from '../../src/context/CartContext';
 import { useAndroidNavigationBar } from '../../src/hooks/useAndroidNavigationBar';
+import { theme } from '../../src/constants/theme'; 
 
-// Cor exata do Mercado Livre
 const ML_YELLOW = '#FFE600'; 
 
-// Categorias de Texto (Menu Superior)
-const TOP_CATEGORIES = ['Tudo', 'Moda', 'Beleza', 'Celulares', 'Lar', 'Computação', 'TVs', 'Veículos'];
 
-// Atalhos com rotas corrigidas para sua estrutura de pastas
 const SHORTCUTS = [
   { id: 1, label: 'Ofertas', icon: 'tag-outline', route: '/(aux)/shop/all-products' },
-  { id: 2, label: 'Mercado Pago', icon: 'qrcode-scan', route: '/(aux)/account/wallet' },
-  { id: 3, label: 'Mercado Play', icon: 'play-box-outline', route: '/(aux)/misc/mercado-play' },
-  { id: 4, label: 'Veículos', icon: 'car-outline', route: null },
-  { id: 5, label: 'Supermercado', icon: 'basket-outline', route: null },
-  { id: 6, label: 'Moda', icon: 'tshirt-crew-outline', route: '/(aux)/shop/all-products' },
+  { id: 2, label: 'Categorias', icon: 'format-list-bulleted', route: '/(tabs)/categories' },
+  { id: 3, label: 'Minhas Compras', icon: 'shopping-outline', route: '/(aux)/shop/my-purchases' },
+  { id: 4, label: 'Histórico', icon: 'clock-time-three-outline', route: '/(aux)/shop/history' },
+  { id: 5, label: 'Ajuda', icon: 'help-circle-outline', route: '/(aux)/misc/help' },
 ];
 
 type ProductUI = {
@@ -44,6 +39,22 @@ type ProductUI = {
   stock: number;
 };
 
+const ListErrorComponent = ({ onRetry, message }: { onRetry: () => void, message: string }) => (
+    <View style={errorStyles.errorContainer}>
+        <MaterialCommunityIcons name="alert-circle-outline" size={50} color="#ccc" />
+        <Text style={errorStyles.errorTextTitle}>Falha ao carregar a Home</Text>
+        <Text style={errorStyles.errorTextSub}>{message}</Text>
+        <Button 
+            mode="contained" 
+            onPress={onRetry} 
+            style={errorStyles.retryButton}
+            labelStyle={errorStyles.retryButtonText}
+        >
+            TENTAR NOVAMENTE
+        </Button>
+    </View>
+);
+
 export default function Home() {
   const router = useRouter();
   const { user } = useAuth();
@@ -52,10 +63,19 @@ export default function Home() {
   const [products, setProducts] = useState<ProductUI[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useAndroidNavigationBar(true);
 
+  const handleProductPress = useCallback(
+    (id: number) => {
+      router.push(`/(aux)/shop/product/${id}` as any);
+    },
+    [router]
+  );
+  
   const fetchProducts = useCallback(async () => {
+    setError(null); 
     try {
       const response = await api.get('/api/product');
       const mappedData = Array.isArray(response.data)
@@ -68,8 +88,9 @@ export default function Home() {
           }))
         : [];
       setProducts(mappedData);
-    } catch (error) {
-      // Falha silenciosa ou log
+    } catch (err) {
+      console.log('Erro ao buscar produtos:', err);
+      setError("Verifique sua conexão ou se a API está online (Erro 500/Timeout).");
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -85,12 +106,11 @@ export default function Home() {
     fetchProducts();
   }, [fetchProducts]);
 
-  const handleProductPress = useCallback(
-    (id: number) => {
-      router.push(`/(aux)/shop/product/${id}` as any);
-    },
-    [router]
-  );
+  const handleNav = (route: string) => {
+    if (route) {
+        router.push(route as any);
+    }
+  };
 
   const getAddressText = useCallback(() => {
     if (user && !(user as any).isGuest && user.name) {
@@ -108,7 +128,6 @@ export default function Home() {
       >
         <View style={styles.imageContainer}>
           {item.imageUri ? (
-            // USO CORRETO: RNImage
             <RNImage
               source={{ uri: item.imageUri }}
               style={styles.productImage}
@@ -154,9 +173,8 @@ export default function Home() {
     [handleProductPress]
   );
 
-  // Card de Login para Visitantes
   const renderLoginCard = () => {
-    const isGuest = !user || (user as any).isGuest;
+    const isGuest = !user || (user as any)?.isGuest;
     if (!isGuest) return null;
 
     return (
@@ -182,6 +200,81 @@ export default function Home() {
     );
   };
 
+  const renderMainContent = () => {
+      if (loading && !refreshing) {
+          return (
+              <ActivityIndicator
+                  size="large"
+                  color={'#3483fa'}
+                  style={{ marginTop: 20 }}
+              />
+          );
+      }
+
+      if (error) {
+          return <ListErrorComponent onRetry={fetchProducts} message={error} />;
+      }
+
+      return (
+        <>
+            <View style={styles.shortcutsContainer}>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+                    {SHORTCUTS.map((item, index) => (
+                        <TouchableOpacity 
+                            key={index} 
+                            style={styles.shortcutItem}
+                            onPress={() => item.route && handleNav(item.route)}
+                        >
+                            <View style={styles.shortcutCircle}>
+                                <MaterialCommunityIcons
+                                    name={item.icon as any}
+                                    size={28}
+                                    color="#666"
+                                />
+                            </View>
+                            <Text
+                                style={styles.shortcutLabel}
+                                numberOfLines={2}
+                            >
+                                {item.label}
+                            </Text>
+                        </TouchableOpacity>
+                    ))}
+                </ScrollView>
+            </View>
+
+            <View style={styles.sectionHeader}>
+                <Text style={styles.sectionTitle}>Ofertas do dia</Text>
+                <TouchableOpacity
+                    onPress={() => router.push('/(aux)/shop/all-products' as any)}
+                >
+                    <Text style={styles.seeAll}>Ver todas</Text>
+                </TouchableOpacity>
+            </View>
+            
+            {/* Lista de Produtos Horizontal */}
+            <FlatList
+                data={products}
+                horizontal
+                renderItem={renderProductItem}
+                keyExtractor={item => String(item.id)}
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.productsList}
+                keyboardShouldPersistTaps="handled"
+                ListEmptyComponent={
+                    <View style={{ padding: 20, alignItems: 'center', width: 300 }}>
+                        <MaterialCommunityIcons name="package-variant-closed" size={40} color="#ddd" />
+                        <Text style={{ color: '#999', marginTop: 10 }}>Nenhuma oferta disponível.</Text>
+                    </View>
+                }
+            />
+
+            {/* Card de Login/Guest */}
+            {renderLoginCard()}
+        </>
+      );
+  };
+  
   return (
     <View style={styles.container}>
       <StatusBar
@@ -191,6 +284,7 @@ export default function Home() {
 
       <View style={styles.headerContainer}>
         <View style={styles.headerContent}>
+          {/* TOP ROW: Search e Cart */}
           <View style={styles.topRow}>
             <TouchableOpacity
               style={styles.searchBar}
@@ -224,7 +318,8 @@ export default function Home() {
               )}
             </TouchableOpacity>
           </View>
-
+          
+          {/* ENDEREÇO (Abaixo do Search) */}
           <TouchableOpacity
             style={styles.addressRow}
             onPress={() => router.push('/(aux)/account/address' as any)}
@@ -248,8 +343,8 @@ export default function Home() {
 
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: 100 }}
-        keyboardShouldPersistTaps="handled" // IMPORTANTE PARA CLIQUES
+        contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled" 
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -274,7 +369,7 @@ export default function Home() {
                 </Text>
               </View>
             </View>
-            {/* Ícone Seguro em vez de imagem local */}
+            
             <MaterialCommunityIcons
               name="truck-delivery"
               size={80}
@@ -284,61 +379,8 @@ export default function Home() {
           </TouchableOpacity>
         </View>
 
-        <View style={styles.shortcutsContainer}>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-            {SHORTCUTS.map((item, index) => (
-              <TouchableOpacity 
-                key={index} 
-                style={styles.shortcutItem}
-                onPress={() => item.route && router.push(item.route as any)}
-              >
-                <View style={styles.shortcutCircle}>
-                  <MaterialCommunityIcons
-                    name={item.icon as any}
-                    size={28}
-                    color="#666"
-                  />
-                </View>
-                <Text
-                  style={styles.shortcutLabel}
-                  numberOfLines={2}
-                >
-                  {item.label}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        </View>
-
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Ofertas do dia</Text>
-          <TouchableOpacity
-            onPress={() => router.push('/(aux)/shop/all-products' as any)}
-          >
-            <Text style={styles.seeAll}>Ver todas</Text>
-          </TouchableOpacity>
-        </View>
-
-        {loading ? (
-          <ActivityIndicator
-            size="large"
-            color={'#3483fa'}
-            style={{ marginTop: 20 }}
-          />
-        ) : (
-          <FlatList
-            data={products}
-            horizontal
-            renderItem={renderProductItem}
-            keyExtractor={item => String(item.id)}
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.productsList}
-            keyboardShouldPersistTaps="handled"
-          />
-        )}
-
-        {/* Card de Login */}
-        {renderLoginCard()}
+        {/* 🟢 Renderiza Conteúdo Principal ou Erro/Loading */}
+        {renderMainContent()}
 
       </ScrollView>
     </View>
@@ -347,10 +389,10 @@ export default function Home() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f5f5f5' },
-
+  
   headerContainer: {
     backgroundColor: ML_YELLOW,
-    paddingTop: Platform.OS === 'android' ? 10 : 50,
+    paddingTop: Platform.OS === 'android' ? 0 : 50,
     elevation: 4,
     zIndex: 10,
   },
@@ -398,6 +440,7 @@ const styles = StyleSheet.create({
   addressRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    paddingVertical: 5, 
   },
 
   addressText: {
@@ -406,6 +449,8 @@ const styles = StyleSheet.create({
     marginLeft: 6,
     marginRight: 5,
   },
+
+  scrollContent: { paddingBottom: 100 },
 
   bannerContainer: { padding: 15 },
 
@@ -568,4 +613,39 @@ const styles = StyleSheet.create({
   loginTitle: { fontSize: 14, fontWeight: 'bold', textAlign: 'center', marginBottom: 15 },
   btnPrimary: { backgroundColor: '#3483fa', marginBottom: 10, borderRadius: 6 },
   btnSecondary: { borderRadius: 6 },
+});
+
+const errorStyles = StyleSheet.create({
+    errorContainer: {
+        flex: 1,
+        alignItems: 'center',
+        padding: 40,
+        backgroundColor: '#fff',
+        borderRadius: 8,
+        margin: 15,
+        elevation: 2,
+    },
+    errorTextTitle: {
+        fontSize: 18,
+        fontWeight: 'bold',
+        marginTop: 15,
+        color: '#d63031',
+    },
+    errorTextSub: {
+        fontSize: 14,
+        color: '#666',
+        textAlign: 'center',
+        marginTop: 5,
+        marginBottom: 20,
+    },
+    retryButton: {
+        backgroundColor: theme.colors.primary,
+        marginTop: 10,
+        width: '100%',
+        maxWidth: 250,
+    },
+    retryButtonText: {
+        color: '#fff',
+        fontWeight: 'bold',
+    }
 });

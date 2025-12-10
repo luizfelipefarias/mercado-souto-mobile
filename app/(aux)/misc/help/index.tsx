@@ -7,12 +7,12 @@ import {
   StatusBar, 
   SafeAreaView, 
   Platform, 
-  Alert 
 } from 'react-native';
 import { Text, List, Divider, Button } from 'react-native-paper';
 import { useRouter } from 'expo-router';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { theme } from '../../../../src/constants/theme';
+import Toast from 'react-native-toast-message';
 
 type FAQItem = {
   q: string;
@@ -75,7 +75,12 @@ export default function Help() {
   }, []);
 
   const handleContactSupport = () => {
-    Alert.alert("Fale Conosco", "O chat de suporte está disponível das 08h às 20h.");
+    Toast.show({
+        type: 'info',
+        text1: 'Suporte Indisponível',
+        text2: 'O chat de suporte está disponível das 08h às 20h.',
+        visibilityTime: 4000
+    });
   };
 
   return (

@@ -14,10 +14,10 @@ import { Text, TextInput, Button, ActivityIndicator } from 'react-native-paper';
 import { useRouter } from 'expo-router';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 
-// Ajuste os caminhos conforme sua estrutura de pastas
 import { theme } from '../../../../src/constants/theme';
 import { useAuth } from '../../../../src/context/AuthContext';
 import api from '../../../../src/services/api';
+import { Client } from '../../../../src/interfaces';
 
 type AddressFormData = {
   zipCode: string;
@@ -31,7 +31,7 @@ type AddressFormData = {
 
 export default function AddressForm() {
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, isGuest } = useAuth(); 
 
   const [loading, setLoading] = useState(false);
   const [loadingCep, setLoadingCep] = useState(false);
@@ -48,12 +48,12 @@ export default function AddressForm() {
 
   const isFormValid = useMemo(() => {
     return (
-      form.zipCode &&
-      form.street &&
-      form.number &&
-      form.city &&
-      form.state &&
-      form.neighborhood
+      form.zipCode.replace(/\D/g, '').length === 8 &&
+      form.street.trim() &&
+      form.number.trim() &&
+      form.city.trim() &&
+      form.state.trim() &&
+      form.neighborhood.trim()
     );
   }, [form]);
 
@@ -95,32 +95,35 @@ export default function AddressForm() {
       return;
     }
 
-    // Verifica se temos o ID do usuário (se for visitante, pode dar erro aqui dependendo da sua lógica)
-    const userId = (user as any)?.id;
 
-    if (!userId) {
-      Alert.alert('Erro', 'Você precisa estar logado para salvar um endereço.');
+    const userId = user?.id;
+    const userPhone = user?.phone;
+    const userName = user?.name;
+
+    if (!userId || isGuest) {
+      Alert.alert('Erro', 'Você precisa estar logado com uma conta para salvar um endereço.');
       return;
     }
 
     setLoading(true);
     try {
-      // Ajuste de Payload para bater com o Swagger da API
       const payload = {
         cep: form.zipCode.replace(/\D/g, ''),
         street: form.street,
         number: form.number,
         complement: form.complement,
-        additionalInfo: form.neighborhood,
-        city: form.city,
-        state: form.state,
+        additionalInfo: form.neighborhood, 
+        
         home: true,
-        contactName: user?.name || 'Cliente',
-        contactPhone: (user as any)?.phone || '' 
+        contactName: userName || 'Cliente',
+        contactPhone: userPhone || '' 
       };
+      
       await api.post(`/api/address/${userId}`, payload);
 
       Alert.alert('Sucesso', 'Endereço cadastrado com sucesso!');
+      
+      
       router.back();
     } catch (error) {
       console.error("Erro ao salvar endereço:", error);
@@ -128,7 +131,7 @@ export default function AddressForm() {
     } finally {
       setLoading(false);
     }
-  }, [form, isFormValid, user, router]);
+  }, [form, isFormValid, user, isGuest, router]); 
 
   return (
     <View style={styles.container}>
@@ -152,13 +155,12 @@ export default function AddressForm() {
 
           <Text style={styles.sectionTitle}>Dados do local</Text>
 
-          {/* Campo de CEP */}
+
           <TextInput
             label="CEP"
             mode="outlined"
             value={form.zipCode}
             onChangeText={t => {
-                // Máscara simples de CEP visual
                 const masked = t.replace(/\D/g, '').replace(/^(\d{5})(\d)/, '$1-$2');
                 handleChange('zipCode', masked);
             }}
@@ -179,7 +181,7 @@ export default function AddressForm() {
                 value={form.city}
                 style={[styles.input, styles.lockedInput]}
                 outlineColor="#ddd"
-                editable={false} // Travado pois vem do ViaCEP
+                editable={false} 
               />
             </View>
 
@@ -190,7 +192,7 @@ export default function AddressForm() {
                 value={form.state}
                 style={[styles.input, styles.lockedInput]}
                 outlineColor="#ddd"
-                editable={false} // Travado pois vem do ViaCEP
+                editable={false} 
               />
             </View>
           </View>
@@ -231,7 +233,7 @@ export default function AddressForm() {
 
             <View style={{ flex: 1 }}>
               <TextInput
-                label="Complemento"
+                label="Complemento (Opcional)"
                 mode="outlined"
                 value={form.complement}
                 onChangeText={t => handleChange('complement', t)}
@@ -253,7 +255,7 @@ export default function AddressForm() {
             mode="contained" 
             onPress={handleSave} 
             loading={loading}
-            disabled={loading}
+            disabled={loading || !isFormValid}
             style={styles.saveButton}
             contentStyle={{ height: 50 }}
             labelStyle={{ fontSize: 16, fontWeight: 'bold', color: '#fff' }}

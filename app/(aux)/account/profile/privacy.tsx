@@ -17,6 +17,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { theme } from '../../../../src/constants/theme';
 import api from '../../../../src/services/api';
 import { useAuth } from '../../../../src/context/AuthContext';
+import Toast from 'react-native-toast-message';
 
 export default function Privacy() {
   const router = useRouter();
@@ -27,10 +28,10 @@ export default function Privacy() {
   const [loading, setLoading] = useState(false);
 
   const confirmDeletion = async () => {
-    const userId = (user as any)?.id;
+    const userId = user?.id;
 
     if (!userId) {
-      Alert.alert('Erro', 'Usuário não identificado.');
+      Toast.show({ type: 'error', text1: 'Erro', text2: 'Usuário não identificado.' });
       return;
     }
 
@@ -40,38 +41,49 @@ export default function Privacy() {
       await api.delete(`/api/client/${userId}`);
       
       await signOut();
+      
+      Toast.show({ type: 'success', text1: 'Conta excluída', text2: 'Esperamos te ver de volta um dia!' });
+      
+      router.replace('/'); 
 
-      Alert.alert(
-        'Conta excluída',
-        'Sua conta foi removida com sucesso. Esperamos te ver de volta um dia!',
-        [{ 
-            text: 'OK', 
-            onPress: () => {
-                if (router.canDismiss()) router.dismissAll();
-                router.replace('/'); 
-            }
-        }]
-      );
     } catch (error) {
       console.log('Erro ao excluir:', error);
-      Alert.alert(
-        'Erro',
-        'Não foi possível excluir a conta no momento. Verifique sua conexão e tente novamente.'
-      );
+      Toast.show({
+        type: 'error',
+        text1: 'Erro Crítico',
+        text2: 'Não foi possível excluir a conta. Tente novamente.',
+      });
     } finally {
       setLoading(false);
     }
   };
 
   const handleDeleteAccount = () => {
-    Alert.alert(
-      'Excluir conta',
-      'ATENÇÃO: Essa ação é irreversível. Você perderá todo seu histórico de compras e endereços salvos. Deseja continuar?',
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        { text: 'Sim, excluir permanentemente', style: 'destructive', onPress: confirmDeletion }
-      ]
-    );
+    const message = 'ATENÇÃO: Essa ação é irreversível. Você perderá todo seu histórico de compras e endereços salvos. Deseja continuar?';
+    
+    if (Platform.OS === 'web') {
+        if (window.confirm(message)) {
+            confirmDeletion();
+        }
+    } else {
+        Alert.alert(
+          'Excluir conta',
+          message,
+          [
+            { text: 'Cancelar', style: 'cancel' },
+            { text: 'Sim, excluir permanentemente', style: 'destructive', onPress: confirmDeletion }
+          ]
+        );
+    }
+  };
+  
+  const handleRequestData = () => {
+      Toast.show({
+          type: 'info',
+          text1: 'Solicitação Enviada',
+          text2: 'Um arquivo com seus dados será enviado para seu e-mail em até 48h.',
+          visibilityTime: 4000
+      });
   };
 
   return (
@@ -142,9 +154,7 @@ export default function Privacy() {
 
         <TouchableOpacity
           style={styles.itemArrow}
-          onPress={() =>
-            Alert.alert('Solicitação recebida', 'Um arquivo com seus dados será enviado para seu e-mail em até 48h.')
-          }
+          onPress={handleRequestData}
         >
           <Text style={styles.itemTitle}>Solicitar meus dados</Text>
           <MaterialCommunityIcons name="download-outline" size={24} color="#666" />

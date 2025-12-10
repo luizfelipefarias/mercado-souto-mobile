@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
   StyleSheet,
@@ -16,17 +16,16 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { theme } from '../../../../src/constants/theme';
 import api from '../../../../src/services/api';
 import { useAuth } from '../../../../src/context/AuthContext';
+import Toast from 'react-native-toast-message';
 
 export default function ChangePassword() {
   const router = useRouter();
   const { user } = useAuth();
   const [loading, setLoading] = useState(false);
 
-  const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
 
-  const [showCurrent, setShowCurrent] = useState(false);
   const [showNew, setShowNew] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
 
@@ -34,8 +33,8 @@ export default function ChangePassword() {
   const passwordsMatch = () => newPassword === confirmPassword;
 
   const handleUpdatePassword = async () => {
-    if (!currentPassword || !newPassword || !confirmPassword) {
-      Alert.alert('Atenção', 'Preencha todos os campos.');
+    if (!newPassword || !confirmPassword) {
+      Alert.alert('Atenção', 'Preencha a nova senha e a confirmação.');
       return;
     }
 
@@ -45,38 +44,41 @@ export default function ChangePassword() {
     }
 
     if (!passwordsMatch()) {
-      Alert.alert('Erro', 'A nova senha e a confirmação não conferem.');
+      Alert.alert('Erro', 'As senhas não conferem.');
       return;
     }
 
     setLoading(true);
 
     try {
-      const userId = (user as any)?.id;
+      const userId = user?.id;
 
-      const currentData = await api.get(`/api/client/${userId}`);
+      if (!userId) {
+        throw new Error("ID de usuário não encontrado.");
+      }
       
-      const { name, email, cpf, phone } = currentData.data;
+      const currentClientResponse = await api.get(`/api/client/${userId}`);
+      const { name, email, cpf, phone } = currentClientResponse.data;
 
       await api.put(`/api/client/${userId}`, {
         name,
         email,
         cpf,
         phone,
-        password: newPassword 
+        password: newPassword
       });
 
+      Toast.show({ type: 'success', text1: 'Sucesso!', text2: 'Sua senha foi alterada.' });
+      
       Alert.alert('Sucesso', 'Sua senha foi alterada com sucesso!', [
         { text: 'OK', onPress: () => router.back() }
       ]);
       
     } catch (err: any) {
-      console.error(err);
-      const errorMessage =
-        err.response?.data?.message ||
-        'Não foi possível alterar a senha. Tente novamente.';
-
-      Alert.alert('Erro', errorMessage);
+      console.error("Erro ao alterar senha:", err);
+      const errorMsg =
+        err.response?.data?.message || 'Não foi possível alterar a senha. Tente novamente.';
+      Toast.show({ type: 'error', text1: 'Erro ao Atualizar', text2: errorMsg });
     } finally {
       setLoading(false);
     }
@@ -107,26 +109,10 @@ export default function ChangePassword() {
       >
         <ScrollView contentContainerStyle={styles.content}>
           <Text style={styles.description}>
-            Para sua segurança, preencha os dados abaixo.
+            Use uma senha forte que você ainda não utilizou neste app.
           </Text>
 
-          <View style={styles.inputContainer}>
-            <TextInput
-              label="Senha atual"
-              mode="outlined"
-              value={currentPassword}
-              onChangeText={setCurrentPassword}
-              secureTextEntry={!showCurrent}
-              activeOutlineColor={theme.colors.primary}
-              right={
-                <TextInput.Icon
-                  icon={showCurrent ? 'eye-off' : 'eye'}
-                  onPress={() => setShowCurrent(!showCurrent)}
-                />
-              }
-              style={styles.input}
-            />
-          </View>
+          {/* 🟢 REMOVIDO: CAMPO SENHA ATUAL */}
 
           <View style={styles.inputContainer}>
             <TextInput
@@ -177,7 +163,7 @@ export default function ChangePassword() {
             mode="contained"
             onPress={handleUpdatePassword}
             loading={loading}
-            disabled={loading}
+            disabled={loading || !newPassword || !confirmPassword || hasErrors() || !passwordsMatch()}
             style={styles.button}
             labelStyle={{ fontWeight: 'bold', fontSize: 16 }}
           >

@@ -1,33 +1,35 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import {
   View,
   StyleSheet,
-  TouchableOpacity,
   ScrollView,
   FlatList,
   ActivityIndicator,
-  StatusBar,
+  TouchableOpacity,
   Dimensions,
+  Platform,
+  StatusBar,
 } from 'react-native';
 import { Text } from 'react-native-paper';
 import { useRouter } from 'expo-router';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import api from '../../src/services/api';
 import { theme } from '../../src/constants/theme';
+import { Category } from '../../src/interfaces';
 
 const { width } = Dimensions.get('window');
 
 const SIDEBAR_ITEMS = [
-  'Para você', 'Moda e Acessórios', 'Esportes e Fitness', 'Joias e Relógios',
-  'Beleza e Saúde', 'Celulares e Telefones', 'Móveis e Decoração', 'Computação',
-  'Videogames', 'Áudio e Vídeo', 'Veículos'
+  'Destaques', 'Moda', 'Esportes', 'Beleza',
+  'Celulares', 'Decoração', 'Computação', 'Veículos', 'Outros'
 ];
 
 export default function CategoriesScreen() {
   const router = useRouter();
-  const [categories, setCategories] = useState<any[]>([]);
+  const [allApiCategories, setAllApiCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedSidebar, setSelectedSidebar] = useState('Moda e Acessórios');
+  
+  const [selectedSidebar, setSelectedSidebar] = useState('Destaques');
 
   useEffect(() => {
     fetchCategories();
@@ -36,7 +38,7 @@ export default function CategoriesScreen() {
   const fetchCategories = async () => {
     try {
       const response = await api.get('/api/category');
-      setCategories(response.data);
+      setAllApiCategories(response.data);
     } catch (error) {
       console.log('Erro ao buscar categorias:', error);
     } finally {
@@ -46,19 +48,33 @@ export default function CategoriesScreen() {
 
   const handleCategoryPress = (categoryName: string) => {
     router.push({
-      pathname: '/(aux)/misc/search-results',
+      pathname: '/(aux)/misc/search-results/index',
       params: { q: categoryName }
     } as any);
   };
 
-  const renderCategoryGridItem = ({ item }: { item: any }) => (
+  const filteredCategories = useMemo(() => {
+    if (selectedSidebar === 'Destaques') {
+        return allApiCategories.slice(0, 9); 
+    }
+    
+    const filterTerm = selectedSidebar.toLowerCase();
+    
+    return allApiCategories.filter(apiCat =>
+        apiCat.name.toLowerCase().includes(filterTerm)
+    );
+    
+  }, [selectedSidebar, allApiCategories]);
+
+
+  const renderCategoryGridItem = ({ item }: { item: Category }) => (
     <TouchableOpacity 
         style={styles.gridItem}
         onPress={() => handleCategoryPress(item.name)}
     >
         <View style={styles.gridIconCircle}>
-            {/* Como a API não retorna ícone, usamos a primeira letra ou ícone genérico */}
-            <MaterialCommunityIcons name="shape-outline" size={30} color="#666" />
+            {/* Usamos a primeira letra da categoria como um ícone simples */}
+            <Text style={styles.gridIconText}>{item.name[0]}</Text>
         </View>
         <Text style={styles.gridLabel} numberOfLines={2}>{item.name}</Text>
     </TouchableOpacity>
@@ -66,7 +82,6 @@ export default function CategoriesScreen() {
 
   return (
     <View style={styles.container}>
-      {/* StatusBar amarela para combinar com o header */}
       <StatusBar backgroundColor={theme.colors.secondary} barStyle="dark-content" />
       
       {/* Header Amarelo */}
@@ -109,13 +124,17 @@ export default function CategoriesScreen() {
                      <Text style={styles.mainTitle}>{selectedSidebar}</Text>
                      
                      <FlatList
-                        data={categories}
+                        data={filteredCategories}
                         renderItem={renderCategoryGridItem}
                         keyExtractor={(item) => String(item.id)}
                         numColumns={3}
                         contentContainerStyle={{ paddingBottom: 20 }}
                         showsVerticalScrollIndicator={false}
-                        key={3}
+                        ListEmptyComponent={
+                            <View style={styles.emptyGrid}>
+                                <Text style={styles.emptyGridText}>Nenhuma categoria encontrada para "{selectedSidebar}"</Text>
+                            </View>
+                        }
                      />
                 </View>
             )}
@@ -173,5 +192,20 @@ const styles = StyleSheet.create({
       justifyContent: 'center', alignItems: 'center', marginBottom: 8,
       borderWidth: 1, borderColor: '#f0f0f0'
   },
-  gridLabel: { fontSize: 11, textAlign: 'center', color: '#333', lineHeight: 14 }
+  gridIconText: {
+      fontSize: 24, 
+      fontWeight: 'bold',
+      color: '#666'
+  },
+  gridLabel: { fontSize: 11, textAlign: 'center', color: '#333', lineHeight: 14 },
+  
+  emptyGrid: {
+      flex: 1,
+      alignItems: 'center',
+      paddingTop: 40
+  },
+  emptyGridText: {
+      color: '#999',
+      fontSize: 14
+  }
 });

@@ -1,211 +1,206 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import {
   View,
   StyleSheet,
-  FlatList,
-  ActivityIndicator,
-  Image,
   TouchableOpacity,
   SafeAreaView,
+  Platform,
   StatusBar,
-  Platform
+  KeyboardAvoidingView,
+  ScrollView,
+  TextInput as RNTextInput,
 } from 'react-native';
-import { Text } from 'react-native-paper';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { Text, ActivityIndicator } from 'react-native-paper';
+import { useRouter } from 'expo-router';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import api from '../../../../src/services/api'; 
 import { theme } from '../../../../src/constants/theme';
 
-type Product = {
-  id: number;
-  title: string;
-  price: number;
-  imageURL?: string[];
-  stock: number;
-};
-
-export default function SearchResults() {
+export default function Search() {
   const router = useRouter();
-  const { q } = useLocalSearchParams(); // Recebe o termo da busca
-  const searchTerm = typeof q === 'string' ? q : '';
-
-  const [loading, setLoading] = useState(true);
-  const [results, setResults] = useState<Product[]>([]);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [loading, setLoading] = useState(false);
+  const inputRef = useRef<RNTextInput>(null);
 
   useEffect(() => {
-    const fetchAndFilter = async () => {
-      setLoading(true);
-      try {
-        const response = await api.get('/api/product');
-        const allProducts = Array.isArray(response.data) ? response.data : [];
+    inputRef.current?.focus();
+  }, []);
 
-        const filtered = allProducts.filter((item: any) =>
-          item.title.toLowerCase().includes(searchTerm.toLowerCase())
-        );
-
-        setResults(
-          filtered.map((item: any) => ({
-            id: item.id,
-            title: item.title,
-            price: Number(item.price),
-            imageURL: item.imageURL,
-            stock: item.stock,
-          }))
-        );
-      } catch (error) {
-        console.log('Erro na busca:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    if (searchTerm) {
-      fetchAndFilter();
+  const handleSearch = useCallback(() => {
+    if (searchTerm.trim().length === 0) {
+      return;
     }
-  }, [searchTerm]);
+    
+    setLoading(true);
+    
+    router.push({
+      pathname: '/(aux)/misc/search-results/index',
+      params: { q: searchTerm.trim() }
+    } as any);
 
-  const handleProductPress = (id: number) => {
-    router.push(`/product/${id}` as any);
+    setTimeout(() => {
+        setLoading(false);
+    }, 500);
+
+  }, [searchTerm, router]);
+
+  const handleClear = () => {
+      setSearchTerm('');
+      inputRef.current?.focus();
   };
-
-  const renderItem = ({ item }: { item: Product }) => (
-    <TouchableOpacity
-      style={styles.card}
-      onPress={() => handleProductPress(item.id)}
-      activeOpacity={0.9}
-    >
-      <Image
-        source={{
-          uri: item.imageURL?.[0] || 'https://via.placeholder.com/150',
-        }}
-        style={styles.image}
-        resizeMode="contain"
-      />
-      <View style={styles.info}>
-        <Text style={styles.title} numberOfLines={2}>
-          {item.title}
-        </Text>
-        <Text style={styles.price}>
-          R$ {item.price.toFixed(2).replace('.', ',')}
-        </Text>
-        {item.stock > 0 && (
-          <Text style={styles.shipping}>Chegará grátis amanhã</Text>
-        )}
-      </View>
-    </TouchableOpacity>
-  );
 
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor={theme.colors.secondary} />
-      
 
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={{padding: 5}}>
+        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
           <MaterialCommunityIcons name="arrow-left" size={24} color="#333" />
         </TouchableOpacity>
-        
-        <TouchableOpacity style={styles.fakeInput} onPress={() => router.back()}>
-            <Text style={styles.inputText} numberOfLines={1}>{searchTerm}</Text>
-            <MaterialCommunityIcons name="close" size={20} color="#999" />
-        </TouchableOpacity>
 
-        <TouchableOpacity style={{padding: 5}} onPress={() => router.push('/cart' as any)}>
+        <View style={styles.searchBox}>
+          <MaterialCommunityIcons name="magnify" size={22} color="#999" />
+          
+          <RNTextInput
+            ref={inputRef}
+            style={styles.input}
+            placeholder="Buscar no Mercado Souto"
+            placeholderTextColor="#999"
+            value={searchTerm}
+            onChangeText={setSearchTerm}
+            onSubmitEditing={handleSearch}
+            returnKeyType="search"
+            autoCorrect={false}
+          />
+          
+          {searchTerm.length > 0 && (
+              <TouchableOpacity onPress={handleClear} style={styles.clearButton}>
+                  <MaterialCommunityIcons name="close" size={20} color="#999" />
+              </TouchableOpacity>
+          )}
+
+        </View>
+        
+        {/* Botão de Carrinho */}
+        <TouchableOpacity style={styles.cartButton} onPress={() => router.push('/(aux)/shop/cart' as any)}>
              <MaterialCommunityIcons name="cart-outline" size={24} color="#333" />
         </TouchableOpacity>
+
       </View>
 
-      <View style={styles.filterBar}>
-         <Text style={styles.resultCount}>{results.length} resultados</Text>
-         <TouchableOpacity style={styles.filterBtn}>
-             <Text style={styles.filterText}>Filtrar</Text>
-             <MaterialCommunityIcons name="filter-variant" size={16} color="#3483fa" />
-         </TouchableOpacity>
-      </View>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={{ flex: 1 }}
+      >
+        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+          
+          <Text style={styles.sectionTitle}>Buscas recentes</Text>
+          
+          {/* Mock: Exibição de Buscas Recentes */}
+          <TouchableOpacity style={styles.recentItem} onPress={() => router.push({pathname: '/(aux)/misc/search-results/index', params: { q: 'Notebook' }} as any)}>
+              <MaterialCommunityIcons name="history" size={20} color="#999" />
+              <Text style={styles.recentText}>Notebook Gamer</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.recentItem} onPress={() => router.push({pathname: '/(aux)/misc/search-results/index', params: { q: 'TV' }} as any)}>
+              <MaterialCommunityIcons name="history" size={20} color="#999" />
+              <Text style={styles.recentText}>TV 4K</Text>
+          </TouchableOpacity>
 
-      {loading ? (
-        <ActivityIndicator size="large" color={theme.colors.primary} style={{ marginTop: 50 }} />
-      ) : (
-        <FlatList
-          data={results}
-          keyExtractor={(item) => String(item.id)}
-          renderItem={renderItem}
-          contentContainerStyle={styles.list}
-          ListEmptyComponent={
-            <View style={styles.empty}>
-              <MaterialCommunityIcons name="magnify-remove-outline" size={60} color="#ddd" />
-              <Text style={styles.emptyTitle}>Não encontramos resultados</Text>
-              <Text style={styles.emptySub}>
-                Verifique se a palavra está escrita corretamente.
-              </Text>
-            </View>
-          }
-        />
-      )}
+          {/* Estado de Loading/Aguardando */}
+          {loading && (
+              <View style={styles.loadingOverlay}>
+                  <ActivityIndicator size="large" color={theme.colors.primary} />
+              </View>
+          )}
+          
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f5f5f5', paddingTop: Platform.OS === 'android' ? 30 : 0 },
-  
+  container: {
+    flex: 1,
+    backgroundColor: '#fff',
+    paddingTop: Platform.OS === 'android' ? 30 : 0
+  },
+
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: theme.colors.secondary,
-    padding: 10,
-    justifyContent: 'space-between'
+    paddingHorizontal: 10,
+    paddingVertical: 12
   },
-  
-  fakeInput: {
-      flex: 1,
-      backgroundColor: '#fff',
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      marginHorizontal: 10,
-      borderRadius: 20,
-      height: 35,
-      paddingHorizontal: 15
+
+  backButton: {
+    padding: 5,
+    marginRight: 8
   },
-  
-  inputText: { color: '#333', fontSize: 14, flex: 1 },
 
-  filterBar: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      padding: 15,
-      backgroundColor: '#fff',
-      borderBottomWidth: 1,
-      borderColor: '#eee'
-  },
-  
-  resultCount: { fontSize: 14, fontWeight: 'bold', color: '#333' },
-  filterBtn: { flexDirection: 'row', alignItems: 'center' },
-  filterText: { color: '#3483fa', marginRight: 5, fontWeight: '500' },
-
-  list: { padding: 10 },
-
-  card: {
+  searchBox: {
+    flex: 1,
     flexDirection: 'row',
+    alignItems: 'center',
     backgroundColor: '#fff',
-    borderRadius: 6,
-    marginBottom: 2, 
-    padding: 15,
-    borderBottomWidth: 1,
-    borderColor: '#eee'
+    borderRadius: 20,
+    paddingHorizontal: 10,
+    height: 40,
+    elevation: 2,
+  },
+
+  input: {
+    flex: 1,
+    fontSize: 16,
+    marginLeft: 8,
+    marginRight: 5,
+    paddingVertical: 0, 
   },
   
-  image: { width: 100, height: 100, borderRadius: 4, backgroundColor: '#f9f9f9' },
-  
-  info: { flex: 1, marginLeft: 15, justifyContent: 'center' },
-  
-  title: { fontSize: 14, color: '#333', marginBottom: 5 },
-  price: { fontSize: 20, fontWeight: '500', color: '#333' },
-  shipping: { fontSize: 12, color: '#00a650', fontWeight: 'bold', marginTop: 5 },
+  clearButton: {
+      padding: 5
+  },
 
-  empty: { alignItems: 'center', marginTop: 50, padding: 20 },
-  emptyTitle: { fontSize: 18, fontWeight: 'bold', marginTop: 10, color: '#333' },
-  emptySub: { fontSize: 14, color: '#999', textAlign: 'center', marginTop: 5 }
+  cartButton: {
+    padding: 5,
+    marginLeft: 10
+  },
+
+  content: {
+    padding: 20,
+  },
+
+  sectionTitle: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 15
+  },
+  
+  recentItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingVertical: 15,
+      borderBottomWidth: 1,
+      borderBottomColor: '#eee',
+      width: '100%'
+  },
+  
+  recentText: {
+      fontSize: 16,
+      color: '#333',
+      marginLeft: 15
+  },
+  
+  loadingOverlay: {
+      position: 'absolute',
+      left: 0,
+      right: 0,
+      top: 0,
+      bottom: 0,
+      justifyContent: 'center',
+      alignItems: 'center',
+      backgroundColor: 'rgba(255, 255, 255, 0.7)',
+      zIndex: 10
+  }
 });

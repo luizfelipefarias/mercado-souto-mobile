@@ -8,12 +8,13 @@ import {
   Alert,
   SafeAreaView,
   Platform,
-  StatusBar
+  StatusBar,
 } from 'react-native';
 import { Text } from 'react-native-paper';
 import { useRouter } from 'expo-router';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { theme } from '../../../../src/constants/theme';
+import Toast from 'react-native-toast-message';
 
 export default function Security() {
   const router = useRouter();
@@ -22,22 +23,39 @@ export default function Security() {
   const [twoFactor, setTwoFactor] = useState(false);
 
   const handleChangePassword = () => {
-    router.push('/(aux)/account/change-password' as any);
+    router.push('/(aux)/account/profile/change-password' as any);
   };
 
   const handleLogoutDevices = () => {
-    Alert.alert(
-      'Desconectar tudo',
-      'Você precisará fazer login novamente em todos os dispositivos. Deseja continuar?',
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        { 
-          text: 'Sim, desconectar', 
-          style: 'destructive',
-          onPress: () => Alert.alert('Sucesso', 'Todos os outros dispositivos foram desconectados.')
+    const message = 'Você precisará fazer login novamente em todos os dispositivos. Deseja continuar?';
+    
+    const performLogoutAction = () => {
+        Toast.show({ 
+            type: 'success', 
+            text1: 'Desconexão Concluída', 
+            text2: 'Você foi desconectado de todos os outros dispositivos com sucesso.',
+            visibilityTime: 3000
+        });
+    };
+
+    if (Platform.OS === 'web') {
+        if (window.confirm(message)) {
+            performLogoutAction();
         }
-      ]
-    );
+    } else {
+        Alert.alert(
+          'Desconectar tudo',
+          message,
+          [
+            { text: 'Cancelar', style: 'cancel' },
+            { 
+              text: 'Sim, desconectar', 
+              style: 'destructive',
+              onPress: performLogoutAction
+            }
+          ]
+        );
+    }
   };
 
   return (
@@ -79,7 +97,15 @@ export default function Security() {
 
           <Switch
             value={biometrics}
-            onValueChange={setBiometrics}
+            onValueChange={(value) => {
+              setBiometrics(value);
+              Toast.show({
+                  type: 'info',
+                  text1: 'Preferência Salva',
+                  text2: value ? 'Biometria ativada.' : 'Biometria desativada.',
+                  visibilityTime: 2000
+              });
+            }}
             trackColor={{ false: '#767577', true: theme.colors.primary }}
             thumbColor={Platform.OS === 'android' ? '#f4f3f4' : ''}
           />
@@ -95,7 +121,15 @@ export default function Security() {
 
           <Switch
             value={twoFactor}
-            onValueChange={setTwoFactor}
+            onValueChange={(value) => {
+                setTwoFactor(value);
+                Toast.show({
+                    type: 'info',
+                    text1: 'Preferência Salva',
+                    text2: value ? 'Verificação em 2 etapas ativada.' : 'Verificação em 2 etapas desativada.',
+                    visibilityTime: 2000
+                });
+            }}
             trackColor={{ false: '#767577', true: theme.colors.primary }}
             thumbColor={Platform.OS === 'android' ? '#f4f3f4' : ''}
           />

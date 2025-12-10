@@ -1,9 +1,8 @@
 import { useRouter } from 'expo-router';
-import * as NavigationBar from 'expo-navigation-bar';
 import React, { useEffect } from 'react';
 import { Image, Platform, StyleSheet, TouchableOpacity, View, ActivityIndicator } from 'react-native';
 import { Text } from 'react-native-paper';
-import AsyncStorage from '@react-native-async-storage/async-storage'; 
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { theme } from '../src/constants/theme';
 import { useAndroidNavigationBar } from '../src/hooks/useAndroidNavigationBar';
@@ -15,30 +14,19 @@ export default function Welcome() {
 
   useAndroidNavigationBar(true);
 
-  useEffect(() => {
-    if (Platform.OS === 'android') {
-      NavigationBar.setVisibilityAsync('hidden');
-      NavigationBar.setBehaviorAsync('overlay-swipe');
-    }
-    return () => {
-      if (Platform.OS === 'android') {
-        NavigationBar.setVisibilityAsync('visible');
-      }
-    };
-  }, []);
 
   useEffect(() => {
     if (!loading && user) {
       router.replace('/(tabs)');
     }
+    
   }, [user, loading, router]);
 
   const handleGuestAccess = async () => {
     if (loginAsGuest) {
-        await loginAsGuest(); 
+      await loginAsGuest(); 
     }
-
-    await AsyncStorage.setItem('@user_email', 'visitante@app.com');
+    
 
     router.replace('/(tabs)');
   };
@@ -51,7 +39,6 @@ export default function Welcome() {
     );
   }
 
-  if (user) return null;
 
   return (
     <View style={styles.container}>
@@ -79,14 +66,14 @@ export default function Welcome() {
       <View style={styles.footer}>
         <TouchableOpacity 
           style={styles.btnSecondary} 
-          onPress={() => router.push('/(auth)/login')}
+          onPress={() => router.push('/(auth)/login' as any)}
         >
           <Text style={styles.btnTextBlue}>Iniciar sessão</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
           style={[styles.btnSecondary, { marginTop: 10 }]}
-          onPress={() => router.push('/(auth)/register')}
+          onPress={() => router.push('/(auth)/register' as any)}
         >
           <Text style={styles.btnTextBlue}>Criar conta</Text>
         </TouchableOpacity>
