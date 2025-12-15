@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, ReactNode, useCallback } from 'react';
 import api from '../services/api';
 import { useAuth } from './AuthContext';
+import Toast from 'react-native-toast-message';
 
 export type OrderItem = {
   id: number;
@@ -15,16 +16,16 @@ export type OrderItem = {
 
 export type Order = {
   id: number;
-  date: string;
+  createdAt: string;
   status: string;
-  items: OrderItem[];
+  orderItems: OrderItem[];
   total: number;
 };
 
 interface OrderContextData {
   orders: Order[];
-  loading: boolean;
-  fetchOrders: () => Promise<void>;
+  loadingOrder: boolean;
+  fetchMyOrders: () => Promise<void>;
   createOrder: (orderData: any) => Promise<void>;
 }
 
@@ -32,46 +33,49 @@ const OrderContext = createContext<OrderContextData>({} as OrderContextData);
 
 export function OrderProvider({ children }: { children: ReactNode }) {
   const [orders, setOrders] = useState<Order[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loadingOrder, setLoadingOrder] = useState(false);
   
-  const { user } = useAuth();
+  const { user, isGuest } = useAuth();
 
-  const fetchOrders = useCallback(async () => {
-    const userId = (user as any)?.id;
-    if (!userId || (user as any)?.isGuest) return;
+  const fetchMyOrders = useCallback(async () => {
+    if (!user || isGuest || !(user as any).id) return;
 
-    setLoading(true);
+    setLoadingOrder(true);
     try {
-      const response = await api.get(`/api/purchase/by-client/${userId}`);
+      const response = await api.get(`/api/orders/by-client/${(user as any).id}`);
       
       if (Array.isArray(response.data)) {
-        setOrders(response.data);
+        const sortedOrders = response.data.sort((a: Order, b: Order) => 
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        );
+        setOrders(sortedOrders);
       } else {
         setOrders([]);
       }
     } catch (error) {
       console.log("Erro ao buscar pedidos no contexto:", error);
     } finally {
-      setLoading(false);
+      setLoadingOrder(false);
     }
-  }, [user]);
+  }, [user, isGuest]);
 
   const createOrder = async (orderData: any) => {
-    setLoading(true);
+    setLoadingOrder(true);
     try {
       await api.post('/api/orders', orderData);
       
-      await fetchOrders();
+      await fetchMyOrders();
       
     } catch (error) {
+      console.log("Erro ao criar pedido:", error);
       throw error;
     } finally {
-      setLoading(false);
+      setLoadingOrder(false);
     }
   };
 
   return (
-    <OrderContext.Provider value={{ orders, loading, fetchOrders, createOrder }}>
+    <OrderContext.Provider value={{ orders, loadingOrder, fetchMyOrders, createOrder }}>
       {children}
     </OrderContext.Provider>
   );

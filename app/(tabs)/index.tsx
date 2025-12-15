@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { 
     View, 
     StyleSheet, 
@@ -10,22 +10,38 @@ import {
     RefreshControl, 
     Platform,
     Image as RNImage, 
+    Dimensions
 } from 'react-native';
 import { Text, Button, Badge } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { useRouter, useFocusEffect } from 'expo-router'; // 🟢 Importando useFocusEffect
+import { useRouter, useFocusEffect } from 'expo-router';
 import api from '../../src/services/api';
 import { useAuth } from '../../src/context/AuthContext';
 import { useCart } from '../../src/context/CartContext';
+import { useHistory } from '../../src/context/HistoryContext'; 
+import { useProduct } from '../../src/context/ProductContext'; 
 import { useAndroidNavigationBar } from '../../src/hooks/useAndroidNavigationBar';
 import { theme } from '../../src/constants/theme'; 
-import AsyncStorage from '@react-native-async-storage/async-storage'; // 🟢 Para ler o endereço ativo
-import { Address } from '../../src/interfaces'; // 🟢 Importando Address
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Address } from '../../src/interfaces';
 
+const { width } = Dimensions.get('window');
 const ML_YELLOW = '#FFE600'; 
 const SELECTED_ADDRESS_KEY = '@selected_address_id';
 const GUEST_ADDRESS_KEY = '@guest_addresses';
 
+// --- CONFIGURAÇÃO DA GRADE DE CATEGORIAS (GRID - 6 ITENS) ---
+// 5 Categorias + 1 Botão "Ver mais" = 2 Linhas limpas
+const CATEGORY_GRID = [
+    { label: 'Celulares', icon: 'cellphone', query: 'Celulares' },
+    { label: 'Roupas', icon: 'tshirt-crew', query: 'Roupas' },
+    { label: 'Beleza', icon: 'lipstick', query: 'Beleza' },
+    { label: 'Eletro', icon: 'washing-machine', query: 'Eletrodomesticos' },
+    { label: 'Esportes', icon: 'soccer', query: 'Esportes' },
+    { label: 'Ver mais', icon: 'plus', route: '/(tabs)/categories' },
+];
+
+// --- ATALHOS REDONDOS ---
 const SHORTCUTS = [
     { id: 1, label: 'Ofertas', icon: 'tag-outline', route: '/(aux)/shop/all-products' },
     { id: 2, label: 'Categorias', icon: 'format-list-bulleted', route: '/(tabs)/categories' },
@@ -40,27 +56,37 @@ type ProductUI = {
     price: number;
     imageUri: string | null;
     stock: number;
+    category: string; 
 };
 
-// 🟢 Tipo de endereço para exibição na Home (incluindo dados do ViaCEP)
 type ActiveAddressInfo = Address & {
     city?: string;
     state?: string;
     neighborhood?: string;
 };
 
+type GroupedProducts = {
+    [categoryName: string]: ProductUI[];
+};
 
-const ListErrorComponent = ({ onRetry, message }: { onRetry: () => void, message: string }) => (
+// --- COMPONENTES AUXILIARES ---
+const errorStyles = StyleSheet.create({
+    errorContainer: {
+        flex: 1, alignItems: 'center', padding: 40, backgroundColor: '#fff',
+        borderRadius: 8, margin: 15, elevation: 2,
+    },
+    errorTextTitle: { fontSize: 18, fontWeight: 'bold', marginTop: 15, color: '#d63031' },
+    errorTextSub: { fontSize: 14, color: '#666', textAlign: 'center', marginTop: 5, marginBottom: 20 },
+    retryButton: { backgroundColor: theme.colors.primary, marginTop: 10, width: '100%', maxWidth: 250 },
+    retryButtonText: { color: '#fff', fontWeight: 'bold' }
+});
+
+const ListErrorComponent = ({ onRetry }: { onRetry: () => void }) => (
     <View style={errorStyles.errorContainer}>
         <MaterialCommunityIcons name="alert-circle-outline" size={50} color="#ccc" />
-        <Text style={errorStyles.errorTextTitle}>Falha ao carregar a Home</Text>
-        <Text style={errorStyles.errorTextSub}>{message}</Text>
-        <Button 
-            mode="contained" 
-            onPress={onRetry} 
-            style={errorStyles.retryButton}
-            labelStyle={errorStyles.retryButtonText}
-        >
+        <Text style={errorStyles.errorTextTitle}>Ops!</Text>
+        <Text style={errorStyles.errorTextSub}>Não foi possível carregar os produtos.</Text>
+        <Button mode="contained" onPress={onRetry} style={errorStyles.retryButton} labelStyle={errorStyles.retryButtonText}>
             TENTAR NOVAMENTE
         </Button>
     </View>
@@ -68,36 +94,39 @@ const ListErrorComponent = ({ onRetry, message }: { onRetry: () => void, message
 
 export default function Home() {
     const router = useRouter();
-    const { user, isGuest } = useAuth(); // 💡 Usando isGuest
+    const { user, isGuest } = useAuth();
     const { cartItems } = useCart();
+    
+    // Contextos
+    const { history } = useHistory(); 
+    const { products, loading: productsLoading, loadProducts } = useProduct(); 
 
-    const [products, setProducts] = useState<ProductUI[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [refreshing, setRefreshing] = useState(false);
-    const [error, setError] = useState<string | null>(null);
-
-    // 🟢 Novo estado para o endereço ativo
+    // Estados Locais
     const [activeAddressInfo, setActiveAddressInfo] = useState<ActiveAddressInfo | null>(null);
-    const [loadingAddress, setLoadingAddress] = useState(true);
+    const [addressLoading, setAddressLoading] = useState(true);
+    const [refreshing, setRefreshing] = useState(false);
 
     useAndroidNavigationBar(true);
 
-    // --- Lógica de Busca de Endereços Ativos ---
+    useEffect(() => {
+        loadProducts();
+    }, []);
+
+    // --- Lógica de Endereço ---
     const fetchActiveAddress = useCallback(async () => {
-        setLoadingAddress(true);
-        let addresses: Address[] = [];
-        let selectedId: number | null = null;
+        setAddressLoading(true);
+        const timeout = setTimeout(() => setAddressLoading(false), 5000);
 
         try {
+            let addresses: Address[] = [];
+            let selectedId: number | null = null;
+
             const selectedIdString = await AsyncStorage.getItem(SELECTED_ADDRESS_KEY);
             selectedId = selectedIdString ? Number(selectedIdString) : null;
 
             if (isGuest) {
                 const stored = await AsyncStorage.getItem(GUEST_ADDRESS_KEY);
-                if (stored) {
-                    // Para o guest, o storage já contém city/state/neighborhood
-                    addresses = JSON.parse(stored) as Address[]; 
-                }
+                if (stored) addresses = JSON.parse(stored) as Address[]; 
             } else if (user?.id) {
                 const res = await api.get<Address[]>(`/api/address/by-client/${user.id}`);
                 addresses = res.data;
@@ -106,7 +135,6 @@ export default function Home() {
             const foundAddress = addresses.find(addr => addr.id === selectedId);
             
             if (foundAddress) {
-                // Mapeia o endereço encontrado para ActiveAddressInfo (incluindo dados de exibição)
                 const mappedInfo: ActiveAddressInfo = {
                     ...foundAddress,
                     city: (foundAddress as any).city || 'Cidade',
@@ -117,189 +145,168 @@ export default function Home() {
             } else {
                 setActiveAddressInfo(null);
             }
-
         } catch (e) {
-            console.error("Erro ao buscar endereço ativo na Home:", e);
+            console.error("Erro endereço Home:", e);
             setActiveAddressInfo(null);
         } finally {
-            setLoadingAddress(false);
+            clearTimeout(timeout);
+            setAddressLoading(false);
         }
     }, [isGuest, user?.id]);
 
-    // 🟢 useFocusEffect para sincronizar o endereço ativo
     useFocusEffect(
         useCallback(() => {
             fetchActiveAddress();
         }, [fetchActiveAddress])
     );
-    // --- Fim da Lógica de Endereços ---
 
+    // --- Agrupamento de Produtos ---
+    const groupedProducts = useMemo(() => {
+        const groups: GroupedProducts = {};
 
-    const handleProductPress = useCallback(
-        (id: number) => {
-            router.push(`/(aux)/shop/product/${id}` as any);
-        },
-        [router]
-    );
-    
-    const fetchProducts = useCallback(async () => {
-        setError(null); 
-        try {
-            const response = await api.get('/api/product');
-            const mappedData = Array.isArray(response.data)
-                ? response.data.map((item: any) => ({
-                    id: item.id,
-                    title: item.title,
-                    price: Number(item.price) || 0,
-                    imageUri: item.imageURL?.[0] || null,
-                    stock: item.stock || 0,
-                }))
-                : [];
-            setProducts(mappedData);
-        } catch (err) {
-            console.log('Erro ao buscar produtos:', err);
-            setError("Verifique sua conexão ou se a API está online (Erro 500/Timeout).");
-        } finally {
-            setLoading(false);
-            setRefreshing(false);
+        if (products.length > 0) {
+            groups['Todos'] = [];
         }
-    }, []);
 
-    useEffect(() => {
-        fetchProducts();
-    }, [fetchProducts]);
+        products.forEach((item: any) => {
+            const rawCatName = item.category?.name;
+            const catName = (rawCatName && typeof rawCatName === 'string') ? rawCatName : 'Outros'; 
 
-    const onRefresh = useCallback(() => {
+            const productUI: ProductUI = {
+                id: item.id,
+                title: item.title,
+                price: Number(item.price) || 0,
+                imageUri: (item.imageURL && item.imageURL.length > 0) ? item.imageURL[0] : null,
+                stock: item.stock || 0,
+                category: catName
+            };
+
+            groups['Todos'].push(productUI);
+
+            if (!groups[catName]) {
+                groups[catName] = [];
+            }
+            groups[catName].push(productUI);
+        });
+
+        return groups;
+    }, [products]);
+
+    // Ordenação das listas
+    const categoriesKeys = useMemo(() => {
+        return Object.keys(groupedProducts).sort((a, b) => {
+            if (a === 'Todos') return -1;
+            if (b === 'Todos') return 1;
+            if (a === 'Outros') return 1;
+            if (b === 'Outros') return -1;
+            return a.localeCompare(b);
+        });
+    }, [groupedProducts]);
+
+    // --- Ações ---
+    const onRefresh = useCallback(async () => {
         setRefreshing(true);
-        fetchProducts();
-    }, [fetchProducts]);
+        await Promise.all([loadProducts(), fetchActiveAddress()]);
+        setRefreshing(false);
+    }, [loadProducts, fetchActiveAddress]);
+
+    const handleProductPress = (id: number) => {
+        router.push(`/(aux)/shop/product/${id}` as any);
+    };
 
     const handleNav = (route: string) => {
-        if (route) {
-            router.push(route as any);
+        if (route) router.push(route as any);
+    };
+
+    const handleGridPress = (item: typeof CATEGORY_GRID[0]) => {
+        if (item.route) {
+            router.push(item.route as any);
+        } else if (item.query) {
+            router.push({
+                pathname: '/(aux)/misc/search-results',
+                params: { q: item.query }
+            } as any);
         }
     };
 
-    // 🟢 Função atualizada para exibir o endereço ativo
+    const handleSeeAll = (categoryName: string) => {
+        if (categoryName === 'Todos') {
+            router.push('/(aux)/shop/all-products' as any);
+        } else {
+            router.push({
+                pathname: '/(aux)/misc/search-results', 
+                params: { q: categoryName } 
+            } as any);
+        }
+    };
+
     const getAddressText = useCallback(() => {
-        if (loadingAddress) {
-            return 'Carregando endereço...';
-        }
-
+        if (addressLoading) return 'Carregando...';
         if (activeAddressInfo && activeAddressInfo.street) {
-            const street = activeAddressInfo.street;
-            const number = activeAddressInfo.number;
-            const bairro = activeAddressInfo.neighborhood;
-
-            // Exemplo: Enviar para R. Flores, 123 - Centro (SP)
-            return `Enviar para ${street}, ${number} - ${bairro || activeAddressInfo.cep}`;
+            return `Enviar para ${activeAddressInfo.street}, ${activeAddressInfo.number} - ${activeAddressInfo.neighborhood || ''}`;
         }
-
-        // Fallback para usuário logado/convidado
         if (user && !(user as any).isGuest && user.name) {
             return `Enviar para ${user.name.split(' ')[0]}`;
         }
         return 'Enviar para Visitante - Informe seu CEP';
-    }, [user, activeAddressInfo, loadingAddress]);
+    }, [user, activeAddressInfo, addressLoading]);
 
-    const renderProductItem = useCallback(
-        ({ item }: { item: ProductUI }) => (
-            <TouchableOpacity
-                style={styles.productCard}
-                onPress={() => handleProductPress(item.id)}
-                activeOpacity={0.9}
-            >
-                <View style={styles.imageContainer}>
-                    {item.imageUri ? (
-                        <RNImage
-                            source={{ uri: item.imageUri }}
-                            style={styles.productImage}
-                            resizeMode="contain"
-                        />
-                    ) : (
-                        <MaterialCommunityIcons
-                            name="image-off-outline"
-                            size={40}
-                            color="#ddd"
-                        />
-                    )}
+    // --- Renderização de Itens ---
+    const renderProductItem = ({ item }: { item: ProductUI }) => (
+        <TouchableOpacity
+            style={styles.productCard}
+            onPress={() => handleProductPress(item.id)}
+            activeOpacity={0.9}
+        >
+            <View style={styles.imageContainer}>
+                {item.imageUri ? (
+                    <RNImage source={{ uri: item.imageUri }} style={styles.productImage} resizeMode="contain" />
+                ) : (
+                    <MaterialCommunityIcons name="image-off-outline" size={40} color="#ddd" />
+                )}
+            </View>
+            <View style={styles.productInfo}>
+                <Text style={styles.productName} numberOfLines={2}>{item.title}</Text>
+                <Text style={styles.oldPrice}>R$ {(item.price * 1.2).toFixed(2).replace('.', ',')}</Text>
+                <View style={styles.priceRow}>
+                    <Text style={styles.price}>R$ {item.price.toFixed(2).replace('.', ',')}</Text>
+                    <Text style={styles.discount}>20% OFF</Text>
                 </View>
-
-                <View style={styles.productInfo}>
-                    <Text style={styles.productName} numberOfLines={2}>
-                        {item.title}
-                    </Text>
-
-                    <Text style={styles.oldPrice}>
-                        R$ {(item.price * 1.2).toFixed(2).replace('.', ',')}
-                    </Text>
-
-                    <View style={styles.priceRow}>
-                        <Text style={styles.price}>
-                            R$ {item.price.toFixed(2).replace('.', ',')}
-                        </Text>
-                        <Text style={styles.discount}>20% OFF</Text>
-                    </View>
-
-                    <Text style={styles.installments}>
-                        6x R$ {(item.price / 6).toFixed(2).replace('.', ',')} sem juros
-                    </Text>
-
-                    {item.stock > 0 && (
-                        <Text style={styles.shipping}>
-                            Frete grátis <Text style={styles.fullText}>FULL</Text>
-                        </Text>
-                    )}
-                </View>
-            </TouchableOpacity>
-        ),
-        [handleProductPress]
+                <Text style={styles.installments}>6x R$ {(item.price / 6).toFixed(2).replace('.', ',')} sem juros</Text>
+                {item.stock > 0 && (
+                    <Text style={styles.shipping}>Frete grátis <Text style={styles.fullText}>FULL</Text></Text>
+                )}
+            </View>
+        </TouchableOpacity>
     );
 
     const renderLoginCard = () => {
-        const isGuest = !user || (user as any)?.isGuest;
-        if (!isGuest) return null;
-
-        return (
-            <View style={styles.loginCardContainer}>
-                <Text style={styles.loginTitle}>Crie uma conta para melhorar sua experiência!</Text>
-                <Button 
-                    mode="contained" 
-                    onPress={() => router.push('/(auth)/register' as any)}
-                    style={styles.btnPrimary}
-                    labelStyle={{ fontWeight: 'bold' }}
-                >
-                    Criar conta
-                </Button>
-                <Button 
-                    mode="text" 
-                    onPress={() => router.push('/(auth)/login' as any)}
-                    style={styles.btnSecondary}
-                    labelStyle={{ color: '#3483fa', fontWeight: 'bold' }}
-                >
-                    Entrar na minha conta
-                </Button>
-            </View>
-        );
-    };
-
-    const renderMainContent = () => {
-        if (loading && !refreshing) {
+        if (!user || (user as any)?.isGuest) {
             return (
-                <ActivityIndicator
-                    size="large"
-                    color={'#3483fa'}
-                    style={{ marginTop: 20 }}
-                />
+                <View style={styles.loginCardContainer}>
+                    <Text style={styles.loginTitle}>Crie uma conta para melhorar sua experiência!</Text>
+                    <Button mode="contained" onPress={() => router.push('/(auth)/register' as any)} style={styles.btnPrimary} labelStyle={{ fontWeight: 'bold' }}>Criar conta</Button>
+                    <Button mode="text" onPress={() => router.push('/(auth)/login' as any)} style={styles.btnSecondary} labelStyle={{ color: '#3483fa', fontWeight: 'bold' }}>Entrar na minha conta</Button>
+                </View>
             );
         }
+        return null;
+    };
 
-        if (error) {
-            return <ListErrorComponent onRetry={fetchProducts} message={error} />;
+    const isGlobalLoading = (productsLoading || addressLoading) && !refreshing;
+
+    const renderMainContent = () => {
+        if (isGlobalLoading) {
+            return <ActivityIndicator size="large" color={'#3483fa'} style={{ marginTop: 20 }} />;
+        }
+
+        if (Object.keys(groupedProducts).length === 0 && !productsLoading) {
+             return <ListErrorComponent onRetry={loadProducts} />;
         }
 
         return (
             <>
+                {/* 1. ATALHOS REDONDOS */}
                 <View style={styles.shortcutsContainer}>
                     <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled">
                         {SHORTCUTS.map((item, index) => (
@@ -309,117 +316,108 @@ export default function Home() {
                                 onPress={() => item.route && handleNav(item.route)}
                             >
                                 <View style={styles.shortcutCircle}>
-                                    <MaterialCommunityIcons
-                                        name={item.icon as any}
-                                        size={28}
-                                        color="#666"
-                                    />
+                                    <MaterialCommunityIcons name={item.icon as any} size={28} color="#666" />
                                 </View>
-                                <Text
-                                    style={styles.shortcutLabel}
-                                    numberOfLines={2}
-                                >
-                                    {item.label}
-                                </Text>
+                                <Text style={styles.shortcutLabel} numberOfLines={2}>{item.label}</Text>
                             </TouchableOpacity>
                         ))}
                     </ScrollView>
                 </View>
 
-                <View style={styles.sectionHeader}>
-                    <Text style={styles.sectionTitle}>Ofertas do dia</Text>
-                    <TouchableOpacity
-                        onPress={() => router.push('/(aux)/shop/all-products' as any)}
-                    >
-                        <Text style={styles.seeAll}>Ver todas</Text>
-                    </TouchableOpacity>
-                </View>
-                
-                {/* Lista de Produtos Horizontal */}
-                <FlatList
-                    data={products}
-                    horizontal
-                    renderItem={renderProductItem}
-                    keyExtractor={item => String(item.id)}
-                    showsHorizontalScrollIndicator={false}
-                    contentContainerStyle={styles.productsList}
-                    keyboardShouldPersistTaps="handled"
-                    ListEmptyComponent={
-                        <View style={{ padding: 20, alignItems: 'center', width: 300 }}>
-                            <MaterialCommunityIcons name="package-variant-closed" size={40} color="#ddd" />
-                            <Text style={{ color: '#999', marginTop: 10 }}>Nenhuma oferta disponível.</Text>
+                {/* 2. VISTO RECENTEMENTE */}
+                {history && history.length > 0 && (
+                    <View style={styles.categorySection}>
+                        <View style={styles.sectionHeader}>
+                            <Text style={styles.sectionTitle}>Visto recentemente</Text>
+                            <TouchableOpacity onPress={() => router.push('/(aux)/shop/history' as any)}>
+                                <Text style={styles.seeAll}>Ver histórico</Text>
+                            </TouchableOpacity>
                         </View>
-                    }
-                />
+                        <FlatList
+                            data={history}
+                            horizontal
+                            renderItem={({ item }) => {
+                                const histItem: ProductUI = {
+                                    id: item.id,
+                                    title: item.title,
+                                    price: item.price,
+                                    imageUri: item.image,
+                                    stock: 1, 
+                                    category: 'Histórico'
+                                };
+                                return renderProductItem({ item: histItem });
+                            }}
+                            keyExtractor={(item, index) => String(item.id + '_' + index)}
+                            showsHorizontalScrollIndicator={false}
+                            contentContainerStyle={styles.productsList}
+                        />
+                    </View>
+                )}
 
-                {/* Card de Login/Guest */}
+                {/* 3. LISTAS DE PRODUTOS */}
+                {categoriesKeys.map((categoryName) => (
+                    <View key={categoryName} style={styles.categorySection}>
+                        <View style={styles.sectionHeader}>
+                            <Text style={styles.sectionTitle}>{categoryName}</Text>
+                            <TouchableOpacity onPress={() => handleSeeAll(categoryName)}>
+                                <Text style={styles.seeAll}>Ver tudo</Text>
+                                <MaterialCommunityIcons name="arrow-right" size={16} color="#3483fa" />
+                            </TouchableOpacity>
+                        </View>
+                        <FlatList
+                            data={groupedProducts[categoryName]}
+                            horizontal
+                            renderItem={renderProductItem}
+                            keyExtractor={item => String(item.id)}
+                            showsHorizontalScrollIndicator={false}
+                            contentContainerStyle={styles.productsList}
+                        />
+                    </View>
+                ))}
+
+                {/* 4. GRADE DE CATEGORIAS (FIM DA TELA) */}
+                <View style={styles.gridSection}>
+                    <Text style={[styles.sectionTitle, { marginLeft: 15, marginBottom: 10 }]}>Categorias</Text>
+                    <View style={styles.gridContainer}>
+                        {CATEGORY_GRID.map((item, index) => (
+                            <TouchableOpacity key={index} style={styles.gridItem} onPress={() => handleGridPress(item)}>
+                                <View style={styles.gridIconCircle}>
+                                    <MaterialCommunityIcons name={item.icon as any} size={28} color={item.label === 'Ver mais' ? '#3483fa' : '#666'} />
+                                </View>
+                                <Text style={styles.gridLabel} numberOfLines={2}>{item.label}</Text>
+                            </TouchableOpacity>
+                        ))}
+                    </View>
+                </View>
+
                 {renderLoginCard()}
+                <View style={{ height: 30 }} />
             </>
         );
     };
     
     return (
         <View style={styles.container}>
-            <StatusBar
-                barStyle="dark-content"
-                backgroundColor={ML_YELLOW}
-            />
+            <StatusBar barStyle="dark-content" backgroundColor={ML_YELLOW} />
 
             <View style={styles.headerContainer}>
                 <View style={styles.headerContent}>
-                    {/* TOP ROW: Search e Cart */}
+                    {/* Top Row */}
                     <View style={styles.topRow}>
-                        <TouchableOpacity
-                            style={styles.searchBar}
-                            onPress={() => router.push('/(aux)/misc/search' as any)}
-                            activeOpacity={0.9}
-                        >
-                            <MaterialCommunityIcons
-                                name="magnify"
-                                size={22}
-                                color="#999"
-                                style={{ marginLeft: 10 }}
-                            />
-                            <Text style={styles.searchText}>
-                                Buscar no Mercado Souto
-                            </Text>
+                        <TouchableOpacity style={styles.searchBar} onPress={() => router.push('/(aux)/misc/search' as any)} activeOpacity={0.9}>
+                            <MaterialCommunityIcons name="magnify" size={22} color="#999" style={{ marginLeft: 10 }} />
+                            <Text style={styles.searchText}>Buscar no Mercado Souto</Text>
                         </TouchableOpacity>
-
-                        <TouchableOpacity
-                            style={styles.cartButton}
-                            onPress={() => router.push('/(aux)/shop/cart' as any)}
-                        >
-                            <MaterialCommunityIcons
-                                name="cart-outline"
-                                size={28}
-                                color="#333"
-                            />
-                            {cartItems.length > 0 && (
-                                <Badge size={16} style={styles.cartBadge}>
-                                    {cartItems.length}
-                                </Badge>
-                            )}
+                        <TouchableOpacity style={styles.cartButton} onPress={() => router.push('/(aux)/shop/cart' as any)}>
+                            <MaterialCommunityIcons name="cart-outline" size={28} color="#333" />
+                            {cartItems.length > 0 && <Badge size={16} style={styles.cartBadge}>{cartItems.length}</Badge>}
                         </TouchableOpacity>
                     </View>
-                    
-                    {/* ENDEREÇO (Abaixo do Search) */}
-                    <TouchableOpacity
-                        style={styles.addressRow}
-                        onPress={() => router.push('/(aux)/account/address' as any)}
-                    >
-                        <MaterialCommunityIcons
-                            name="map-marker-outline"
-                            size={18}
-                            color="#333"
-                        />
-                        <Text style={styles.addressText} numberOfLines={1}>
-                            {getAddressText()}
-                        </Text>
-                        <MaterialCommunityIcons
-                            name="chevron-right"
-                            size={16}
-                            color="#777"
-                        />
+                    {/* Endereço */}
+                    <TouchableOpacity style={styles.addressRow} onPress={() => router.push('/(aux)/account/address' as any)}>
+                        <MaterialCommunityIcons name="map-marker-outline" size={18} color="#333" />
+                        <Text style={styles.addressText} numberOfLines={1}>{getAddressText()}</Text>
+                        <MaterialCommunityIcons name="chevron-right" size={16} color="#777" />
                     </TouchableOpacity>
                 </View>
             </View>
@@ -428,41 +426,20 @@ export default function Home() {
                 showsVerticalScrollIndicator={false}
                 contentContainerStyle={styles.scrollContent}
                 keyboardShouldPersistTaps="handled" 
-                refreshControl={
-                    <RefreshControl
-                        refreshing={refreshing}
-                        onRefresh={onRefresh}
-                        colors={[ML_YELLOW]}
-                    />
-                }
+                refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[ML_YELLOW]} />}
             >
-
+                {/* Banner de Ofertas */}
                 <View style={styles.bannerContainer}>
-                    <TouchableOpacity
-                        style={styles.banner}
-                        onPress={() => router.push('/(aux)/shop/all-products' as any)}
-                        activeOpacity={0.9}
-                    >
+                    <TouchableOpacity style={styles.banner} onPress={() => router.push('/(aux)/shop/all-products' as any)} activeOpacity={0.9}>
                         <View>
                             <Text style={styles.bannerTitle}>OFERTAS</Text>
                             <Text style={styles.bannerSubtitle}>IMPERDÍVEIS</Text>
-                            <View style={styles.bannerButton}>
-                                <Text style={styles.bannerButtonText}>
-                                    Ver mais
-                                </Text>
-                            </View>
+                            <View style={styles.bannerButton}><Text style={styles.bannerButtonText}>Ver mais</Text></View>
                         </View>
-                        
-                        <MaterialCommunityIcons
-                            name="truck-delivery"
-                            size={80}
-                            color="#2d3277"
-                            style={{ marginRight: 10 }}
-                        />
+                        <MaterialCommunityIcons name="truck-delivery" size={80} color="#2d3277" style={{ marginRight: 10 }} />
                     </TouchableOpacity>
                 </View>
 
-                {/* 🟢 Renderiza Conteúdo Principal ou Erro/Loading */}
                 {renderMainContent()}
 
             </ScrollView>
@@ -473,262 +450,79 @@ export default function Home() {
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: '#f5f5f5' },
     
-    headerContainer: {
-        backgroundColor: ML_YELLOW,
-        paddingTop: Platform.OS === 'android' ? 0 : 50,
-        elevation: 4,
-        zIndex: 10,
-    },
-
-    headerContent: {
-        paddingHorizontal: 15,
-        paddingBottom: 12,
-    },
-
-    topRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        marginBottom: 10,
-    },
-
-    searchBar: {
-        flex: 1,
-        flexDirection: 'row',
-        alignItems: 'center',
-        backgroundColor: '#fff',
-        height: 38,
-        borderRadius: 30,
-        marginRight: 12,
-        elevation: 2,
-        paddingHorizontal: 10,
-    },
-
-    searchText: {
-        marginLeft: 8,
-        color: '#bbb',
-        fontSize: 14,
-    },
-
+    // Header
+    headerContainer: { backgroundColor: ML_YELLOW, paddingTop: Platform.OS === 'android' ? 0 : 50, elevation: 4, zIndex: 10 },
+    headerContent: { paddingHorizontal: 15, paddingBottom: 12 },
+    topRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 10 },
+    searchBar: { flex: 1, flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', height: 38, borderRadius: 30, marginRight: 12, elevation: 2, paddingHorizontal: 10 },
+    searchText: { marginLeft: 8, color: '#bbb', fontSize: 14 },
     cartButton: { padding: 5 },
-
-    cartBadge: {
-        position: 'absolute',
-        top: -2,
-        right: -2,
-        backgroundColor: '#d63031',
-        fontSize: 10,
-        fontWeight: 'bold',
-    },
-
-    addressRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingVertical: 5, 
-    },
-
-    addressText: {
-        flex: 1,
-        fontSize: 13,
-        marginLeft: 6,
-        marginRight: 5,
-    },
+    cartBadge: { position: 'absolute', top: -2, right: -2, backgroundColor: '#d63031', fontSize: 10, fontWeight: 'bold' },
+    addressRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 5 },
+    addressText: { flex: 1, fontSize: 13, marginLeft: 6, marginRight: 5 },
 
     scrollContent: { paddingBottom: 100 },
-
+    
+    // Banner
     bannerContainer: { padding: 15 },
+    banner: { backgroundColor: '#3483fa', height: 150, borderRadius: 8, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, justifyContent: 'space-between', elevation: 4 },
+    bannerTitle: { color: '#FFE600', fontSize: 22, fontWeight: '900', fontStyle: 'italic' },
+    bannerSubtitle: { color: '#FFF', fontSize: 20, fontWeight: 'bold', marginBottom: 12 },
+    bannerButton: { backgroundColor: '#fff', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20 },
+    bannerButtonText: { color: '#3483fa', fontWeight: 'bold', fontSize: 12 },
 
-    banner: {
-        backgroundColor: '#3483fa',
-        height: 150,
-        borderRadius: 8,
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingHorizontal: 20,
-        justifyContent: 'space-between',
-        elevation: 4,
-    },
-
-    bannerTitle: {
-        color: '#FFE600',
-        fontSize: 22,
-        fontWeight: '900',
-        fontStyle: 'italic',
-    },
-
-    bannerSubtitle: {
-        color: '#FFF',
-        fontSize: 20,
-        fontWeight: 'bold',
-        marginBottom: 12,
-    },
-
-    bannerButton: {
-        backgroundColor: '#fff',
-        paddingHorizontal: 16,
-        paddingVertical: 8,
-        borderRadius: 20,
-    },
-
-    bannerButtonText: {
-        color: '#3483fa',
-        fontWeight: 'bold',
-        fontSize: 12,
-    },
-
+    // Atalhos
     shortcutsContainer: { height: 95 },
+    shortcutItem: { alignItems: 'center', marginRight: 15, width: 72 },
+    shortcutCircle: { width: 58, height: 58, backgroundColor: '#fff', borderRadius: 29, justifyContent: 'center', alignItems: 'center', marginBottom: 6, elevation: 2, borderWidth: 1, borderColor: '#f0f0f0' },
+    shortcutLabel: { fontSize: 11, color: '#666', textAlign: 'center' },
 
-    shortcutItem: {
-        alignItems: 'center',
-        marginRight: 15,
-        width: 72,
-    },
-
-    shortcutCircle: {
-        width: 58,
-        height: 58,
-        backgroundColor: '#fff',
-        borderRadius: 29,
-        justifyContent: 'center',
-        alignItems: 'center',
-        marginBottom: 6,
-        elevation: 2,
-        borderWidth: 1,
-        borderColor: '#f0f0f0',
-    },
-
-    shortcutLabel: {
-        fontSize: 11,
-        color: '#666',
-        textAlign: 'center',
-    },
-
-    sectionHeader: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        paddingHorizontal: 15,
-        marginBottom: 10,
-        alignItems: 'center',
-    },
-
-    sectionTitle: {
-        fontSize: 17,
-        fontWeight: '700',
-    },
-
-    seeAll: {
-        color: '#3483fa',
-        fontSize: 14,
-    },
-
+    // Seções de Produtos
+    categorySection: { marginTop: 15, marginBottom: 5 },
+    sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 15, marginBottom: 10, alignItems: 'center' },
+    sectionTitle: { fontSize: 18, fontWeight: '700', color: '#333' },
+    seeAll: { color: '#3483fa', fontSize: 14, marginRight: 4 },
     productsList: { paddingHorizontal: 10 },
-
-    productCard: {
-        backgroundColor: '#fff',
-        width: 160,
-        height: 310,
-        marginHorizontal: 6,
-        borderRadius: 8,
-        elevation: 3,
-        overflow: 'hidden',
+    
+    // Grade de Categorias (Estilo Card Branco - 3 colunas)
+    gridSection: { marginTop: 25 },
+    gridContainer: { 
+        flexDirection: 'row', 
+        flexWrap: 'wrap', 
+        backgroundColor: '#f5f5f5', 
+        justifyContent: 'space-between', 
+        paddingHorizontal: 10 
     },
-
-    imageContainer: {
-        height: 160,
+    gridItem: { 
+        width: '31%', // 3 Colunas
+        aspectRatio: 1, 
+        alignItems: 'center', 
         justifyContent: 'center',
-        alignItems: 'center',
-        borderBottomWidth: 1,
-        borderBottomColor: '#f5f5f5',
-        padding: 10,
+        marginBottom: 10,
+        backgroundColor: '#fff', 
+        borderRadius: 8,
+        elevation: 2, 
+        padding: 5
     },
+    gridIconCircle: { marginBottom: 5 },
+    gridLabel: { fontSize: 12, color: '#666', textAlign: 'center', fontWeight: '500' },
 
+    // Card de Produto
+    productCard: { backgroundColor: '#fff', width: 160, height: 310, marginHorizontal: 6, borderRadius: 8, elevation: 3, overflow: 'hidden' },
+    imageContainer: { height: 160, justifyContent: 'center', alignItems: 'center', borderBottomWidth: 1, borderBottomColor: '#f5f5f5', padding: 10 },
     productImage: { width: '100%', height: '100%' },
-
     productInfo: { padding: 12, flex: 1 },
+    productName: { fontSize: 13, marginBottom: 6, height: 32 },
+    oldPrice: { fontSize: 11, color: '#aaa', textDecorationLine: 'line-through' },
+    priceRow: { flexDirection: 'row', alignItems: 'center' },
+    price: { fontSize: 20, fontWeight: '500', marginRight: 8 },
+    discount: { fontSize: 12, color: '#00a650', fontWeight: 'bold' },
+    installments: { fontSize: 11 },
+    shipping: { fontSize: 11, color: '#00a650', marginTop: 4, fontWeight: '700' },
+    fullText: { fontWeight: 'bold', fontStyle: 'italic' },
 
-    productName: {
-        fontSize: 13,
-        marginBottom: 6,
-        height: 32,
-    },
-
-    oldPrice: {
-        fontSize: 11,
-        color: '#aaa',
-        textDecorationLine: 'line-through',
-    },
-
-    priceRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-    },
-
-    price: {
-        fontSize: 20,
-        fontWeight: '500',
-        marginRight: 8,
-    },
-
-    discount: {
-        fontSize: 12,
-        color: '#00a650',
-        fontWeight: 'bold',
-    },
-
-    installments: {
-        fontSize: 11,
-    },
-
-    shipping: {
-        fontSize: 11,
-        color: '#00a650',
-        marginTop: 4,
-        fontWeight: '700',
-    },
-
-    fullText: {
-        fontWeight: 'bold',
-        fontStyle: 'italic',
-    },
-
-    loginCardContainer: {
-        backgroundColor: '#fff', margin: 10, padding: 15, borderRadius: 8, elevation: 2
-    },
+    loginCardContainer: { backgroundColor: '#fff', margin: 10, padding: 15, borderRadius: 8, elevation: 2, marginTop: 30 },
     loginTitle: { fontSize: 14, fontWeight: 'bold', textAlign: 'center', marginBottom: 15 },
     btnPrimary: { backgroundColor: '#3483fa', marginBottom: 10, borderRadius: 6 },
     btnSecondary: { borderRadius: 6 },
-});
-
-const errorStyles = StyleSheet.create({
-    errorContainer: {
-        flex: 1,
-        alignItems: 'center',
-        padding: 40,
-        backgroundColor: '#fff',
-        borderRadius: 8,
-        margin: 15,
-        elevation: 2,
-    },
-    errorTextTitle: {
-        fontSize: 18,
-        fontWeight: 'bold',
-        marginTop: 15,
-        color: '#d63031',
-    },
-    errorTextSub: {
-        fontSize: 14,
-        color: '#666',
-        textAlign: 'center',
-        marginTop: 5,
-        marginBottom: 20,
-    },
-    retryButton: {
-        backgroundColor: theme.colors.primary,
-        marginTop: 10,
-        width: '100%',
-        maxWidth: 250,
-    },
-    retryButtonText: {
-        color: '#fff',
-        fontWeight: 'bold',
-    }
 });

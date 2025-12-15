@@ -10,6 +10,8 @@ import { CartProvider } from '../src/context/CartContext';
 import { ProductProvider } from '../src/context/ProductContext';
 import { UserProvider } from '../src/context/UserContext';
 import { OrderProvider } from '../src/context/OrderContext';
+import { CategoryProvider } from '@/context/CategoryContext';
+import { FavoritesProvider } from '../src/context/FavoritesContext';
 
 function RootNavigation() {
   const { user, loading, isGuest } = useAuth();
@@ -40,8 +42,6 @@ function RootNavigation() {
       <Stack.Screen name="index" />
       <Stack.Screen name="(auth)" />
       <Stack.Screen name="(tabs)" />
-
-      {/* --- GRUPO SHOP (Compras/Produtos) --- */}
       <Stack.Screen 
         name="(aux)/shop/cart/index" 
         options={{ 
@@ -88,16 +88,20 @@ export default function RootLayout() {
     <AuthProvider>
       <UserProvider>
         <ProductProvider>
-          <CartProvider>
-            <OrderProvider>
-              <HistoryProvider>
-                <PaperProvider theme={theme}>
-                  <RootNavigation />
-                  <Toast />
-                </PaperProvider>
-              </HistoryProvider>
-            </OrderProvider>
-          </CartProvider>
+          <CategoryProvider>
+           <CartProvider>
+             <OrderProvider>
+               <HistoryProvider>
+                <FavoritesProvider>
+                   <PaperProvider theme={theme}>
+                         <RootNavigation />
+                           <Toast />
+                         </PaperProvider>
+                       </FavoritesProvider>
+                    </HistoryProvider>
+                 </OrderProvider>
+              </CartProvider>
+          </CategoryProvider>
         </ProductProvider>
       </UserProvider>
     </AuthProvider>

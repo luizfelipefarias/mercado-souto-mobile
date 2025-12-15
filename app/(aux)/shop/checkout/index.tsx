@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
     View,
     StyleSheet,
@@ -11,7 +11,7 @@ import {
     ActivityIndicator,
 } from 'react-native';
 import { Text, RadioButton, Divider } from 'react-native-paper';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { theme } from '../../../../src/constants/theme';
 import { useCart } from '../../../../src/context/CartContext';
@@ -21,117 +21,87 @@ import { Address } from '../../../../src/interfaces';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const SELECTED_ADDRESS_KEY = '@selected_address_id'; 
-const GUEST_ADDRESS_KEY = '@guest_addresses'; // 🟢 Chave para endereços locais
+const GUEST_ADDRESS_KEY = '@guest_addresses';
 
 type DisplayAddress = Address & {
-    city?: string; // Mantido para exibição se disponível
-    state?: string; // Mantido para exibição se disponível
-    neighborhood?: string; // Mantido para exibição se disponível
+    city?: string;
+    state?: string;
+    neighborhood?: string;
 };
 
 export default function Checkout() {
     const router = useRouter();
     const { cartItems, clearCart } = useCart();
-    const { user, signed, isGuest } = useAuth(); // 💡 Usando isGuest
+    const { user, signed, isGuest } = useAuth();
 
     const [paymentMethod, setPaymentMethod] = useState<'pix' | 'card'>('pix');
     const [loading, setLoading] = useState(false);
     const [loadingAddress, setLoadingAddress] = useState(false);
     const [address, setAddress] = useState<DisplayAddress | null>(null);
 
-    // CORREÇÃO 1: Acessar item.price (formato plano)
     const total = useMemo(
-        () =>
-          cartItems.reduce((sum, item) => sum + (item.price * (item.quantity || 1)), 0),
+        () => cartItems.reduce((sum, item) => sum + (item.price * (item.quantity || 1)), 0),
         [cartItems]
     );
 
-    useEffect(() => {
-        // 🟢 Função unificada para carregar endereços (Local ou API)
-        async function fetchAllAddresses() {
-            let addresses: Address[] = [];
+    const loadAddressData = useCallback(async () => {
+        if (!signed && !isGuest) return;
+
+        setLoadingAddress(true);
+        try {
+            const selectedIdString = await AsyncStorage.getItem(SELECTED_ADDRESS_KEY);
+            const selectedId = selectedIdString ? Number(selectedIdString) : null;
+            
+            let allAddresses: Address[] = [];
             
             if (isGuest) {
-                // 1. Cenário Guest (Local Storage)
                 const stored = await AsyncStorage.getItem(GUEST_ADDRESS_KEY);
-                if (stored) {
-                    addresses = JSON.parse(stored);
-                }
+                if (stored) allAddresses = JSON.parse(stored);
             } else {
-                // 2. Cenário Logado (API)
-                try {
-                    const res = await api.get<Address[]>(`/api/address/by-client/${user?.id}`);
-                    addresses = res.data;
-                } catch (e) {
-                    console.log('Erro ao buscar endereços API:', e);
-                }
+                const res = await api.get<Address[]>(`/api/address/by-client/${user?.id}`);
+                allAddresses = res.data;
             }
-            return addresses;
-        }
 
+            let selectedAddress = allAddresses.find(addr => addr.id === selectedId);
+            
+            if (!selectedAddress && allAddresses.length > 0) {
+                selectedAddress = allAddresses[0];
+                await AsyncStorage.setItem(SELECTED_ADDRESS_KEY, selectedAddress.id.toString());
+            }
 
-        async function loadAddress() {
-            setLoadingAddress(true);
-            try {
-                // 1. Tentar carregar o ID do endereço ativo salvo
-                const selectedIdString = await AsyncStorage.getItem(SELECTED_ADDRESS_KEY);
-                const selectedId = selectedIdString ? Number(selectedIdString) : null;
-                
-                // 2. Buscar TODOS os endereços (Guest ou API)
-                const allAddresses = await fetchAllAddresses();
-
-                // 3. Encontrar o endereço que está ativo (selecionado)
-                let selectedAddress = allAddresses.find(addr => addr.id === selectedId);
-                
-                // 4. Se o selecionado não existir ou for nulo, usa o primeiro
-                if (!selectedAddress && allAddresses.length > 0) {
-                    selectedAddress = allAddresses[0];
-                    // Opcional: Salvar o primeiro como ativo se não houver seleção prévia
-                    await AsyncStorage.setItem(SELECTED_ADDRESS_KEY, selectedAddress.id.toString());
-                }
-
-                if (selectedAddress) {
-                     // 5. Mapear para DisplayAddress (incluindo dados do ViaCEP salvos no Guest Storage)
-                    const displayAddress: DisplayAddress = {
-                        ...selectedAddress,
-                        // Assumindo que city/state/neighborhood são salvos no storage ou retornados pela API
-                        neighborhood: (selectedAddress as any).neighborhood || selectedAddress.additionalInfo || 'Bairro', 
-                        city: (selectedAddress as any).city || 'Cidade',
-                        state: (selectedAddress as any).state || 'UF',
-                    };
-                    setAddress(displayAddress);
-                } else {
-                    setAddress(null);
-                }
-            } catch (err) {
-                console.log('Erro ao carregar endereço:', err);
+            if (selectedAddress) {
+                const displayAddress: DisplayAddress = {
+                    ...selectedAddress,
+                    neighborhood: (selectedAddress as any).neighborhood || selectedAddress.additionalInfo || 'Bairro', 
+                    city: (selectedAddress as any).city || 'Cidade',
+                    state: (selectedAddress as any).state || 'UF',
+                };
+                setAddress(displayAddress);
+            } else {
                 setAddress(null);
-            } finally {
-                setLoadingAddress(false);
             }
+        } catch (err) {
+            console.log('Erro ao carregar endereço:', err);
+            setAddress(null);
+        } finally {
+            setLoadingAddress(false);
         }
-        
-        // 💡 Chama a função de carregamento quando o componente foca (ou monta)
-        // e se estiver logado OU for convidado (para o cenário Guest).
-        if (signed || isGuest) {
-             loadAddress();
-        }
+    }, [signed, isGuest, user?.id]);
 
-    }, [user, signed, isGuest]);
+    useFocusEffect(
+        useCallback(() => {
+            loadAddressData();
+        }, [loadAddressData])
+    );
 
     const handleFinish = async () => {
         if (!signed || (user as any)?.isGuest) {
-            Alert.alert(
-                'Login necessário',
-                'Você precisa estar logado com uma conta para finalizar a compra.',
-                [
-                    { text: 'Cancelar', style: 'cancel' },
-                    { text: 'Entrar', onPress: () => router.push('/(auth)/login' as any) },
-                ]
-            );
+            Alert.alert('Login necessário', 'Você precisa estar logado para finalizar.', [
+                { text: 'Cancelar', style: 'cancel' },
+                { text: 'Entrar', onPress: () => router.push('/(auth)/login' as any) },
+            ]);
             return;
         }
-        // ... (restante do handleFinish, inalterado)
 
         if (cartItems.length === 0) {
             Alert.alert('Carrinho vazio', 'Adicione produtos antes de continuar.');
@@ -139,14 +109,10 @@ export default function Checkout() {
         }
 
         if (!address) {
-            Alert.alert(
-                'Endereço não encontrado',
-                'Adicione um endereço de entrega antes de finalizar a compra.',
-                [
-                    { text: 'Cancelar', style: 'cancel' },
-                    { text: 'Adicionar endereço', onPress: () => router.push('/(aux)/account/address' as any) },
-                ]
-            );
+            Alert.alert('Endereço', 'Adicione um endereço de entrega.', [
+                { text: 'Cancelar', style: 'cancel' },
+                { text: 'Adicionar', onPress: () => router.push('/(aux)/account/address' as any) },
+            ]);
             return;
         }
 
@@ -166,19 +132,18 @@ export default function Checkout() {
             };
 
             await api.post('/api/orders', orderData);
-
             clearCart();
             
-            Alert.alert('Sucesso!', 'Pedido realizado. Acompanhe o status em Minhas Compras.');
-            
+            if (router.canDismiss()) router.dismissAll(); 
             router.replace('/(aux)/shop/my-purchases' as any);
             
+            setTimeout(() => {
+                 Alert.alert('Sucesso!', 'Pedido realizado com sucesso.');
+            }, 500);
+            
         } catch (error: any) {
-            console.log('Erro ao finalizar pedido:', error);
-            const msg =
-                error?.response?.data?.message ||
-                error?.message ||
-                'Não foi possível finalizar a compra. Tente novamente.';
+            console.log('Erro ao finalizar:', error);
+            const msg = error?.response?.data?.message || 'Erro ao finalizar compra.';
             Alert.alert('Erro', msg);
         } finally {
             setLoading(false);
@@ -199,7 +164,6 @@ export default function Checkout() {
             </SafeAreaView>
 
             <ScrollView contentContainerStyle={styles.content}>
-                {/* Seção de Endereço */}
                 <View style={styles.section}>
                     <Text style={styles.sectionTitle}>Endereço de entrega</Text>
                     <View style={styles.addressBox}>
@@ -211,56 +175,38 @@ export default function Checkout() {
                                 <>
                                     <Text style={{ fontWeight: 'bold' }}>{address.street}, {address.number}</Text>
                                     <Text style={{ color: '#666' }}>
-                                        {/* 🟢 Renderização simplificada: Bairro (neighborhood/additionalInfo) e CEP */}
-                                        {address.cep} - {address.neighborhood || address.additionalInfo || 'Detalhes não informados'}
+                                        {address.cep} - {address.neighborhood}
                                     </Text>
-                                    <Text style={{ color: '#666', fontSize: 12 }}>{address.contactName || (user as any)?.name || 'Destinatário'}</Text>
-                                    {/* 💡 Se necessário exibir a cidade/UF (que foi salva no storage Guest) */}
-                                    {address.city && address.state && (
-                                        <Text style={{ color: '#999', fontSize: 12 }}>{address.city} / {address.state}</Text>
+                                    <Text style={{ color: '#666', fontSize: 12 }}>
+                                        {address.contactName || (user as any)?.name}
+                                    </Text>
+                                    {address.city && (
+                                        <Text style={{ color: '#999', fontSize: 12 }}>{address.city}/{address.state}</Text>
                                     )}
                                 </>
                             ) : (
-                                <>
-                                    <Text style={{ fontWeight: 'bold' }}>Nenhum endereço</Text>
-                                    <Text style={{ color: '#666' }}>Adicione um endereço para entrega</Text>
-                                </>
+                                <Text style={{ color: '#666' }}>Nenhum endereço selecionado</Text>
                             )}
                         </View>
-                        
                         <TouchableOpacity onPress={() => router.push('/(aux)/account/address' as any)}>
                             <Text style={styles.link}>Trocar</Text>
                         </TouchableOpacity>
                     </View>
                 </View>
 
-                {/* Seção de Pagamento */}
                 <View style={styles.section}>
                     <Text style={styles.sectionTitle}>Como você prefere pagar?</Text>
-
                     <TouchableOpacity style={styles.paymentOption} onPress={() => setPaymentMethod('pix')}>
-                        <RadioButton
-                            value="pix"
-                            status={paymentMethod === 'pix' ? 'checked' : 'unchecked'}
-                            onPress={() => setPaymentMethod('pix')}
-                            color="#00a650"
-                        />
+                        <RadioButton value="pix" status={paymentMethod === 'pix' ? 'checked' : 'unchecked'} onPress={() => setPaymentMethod('pix')} color="#00a650" />
                         <MaterialCommunityIcons name="qrcode" size={24} color="#00a650" style={{ marginLeft: 10 }} />
                         <View style={{ marginLeft: 10 }}>
                             <Text style={styles.paymentLabel}>Pix (Aprovação imediata)</Text>
                             <Text style={styles.paymentSubLabel}>Use o app do seu banco</Text>
                         </View>
                     </TouchableOpacity>
-
                     <Divider />
-
                     <TouchableOpacity style={styles.paymentOption} onPress={() => setPaymentMethod('card')}>
-                        <RadioButton
-                            value="card"
-                            status={paymentMethod === 'card' ? 'checked' : 'unchecked'}
-                            onPress={() => setPaymentMethod('card')}
-                            color="#00a650"
-                        />
+                        <RadioButton value="card" status={paymentMethod === 'card' ? 'checked' : 'unchecked'} onPress={() => setPaymentMethod('card')} color="#00a650" />
                         <MaterialCommunityIcons name="credit-card-outline" size={24} color="#333" style={{ marginLeft: 10 }} />
                         <View style={{ marginLeft: 10 }}>
                             <Text style={styles.paymentLabel}>Cartão de Crédito</Text>
@@ -269,7 +215,6 @@ export default function Checkout() {
                     </TouchableOpacity>
                 </View>
 
-                {/* Resumo */}
                 <View style={styles.section}>
                     <Text style={styles.sectionTitle}>Resumo</Text>
                     <View style={styles.row}>
@@ -288,7 +233,6 @@ export default function Checkout() {
                 </View>
             </ScrollView>
 
-            {/* Botão de Confirmar */}
             <View style={styles.footer}>
                 <TouchableOpacity style={styles.payBtn} onPress={handleFinish} disabled={loading}>
                     {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.payText}>Confirmar compra</Text>}
@@ -299,96 +243,22 @@ export default function Checkout() {
 }
 
 const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-        backgroundColor: '#f5f5f5',
-    },
-    header: {
-        backgroundColor: theme.colors.secondary,
-        paddingTop: Platform.OS === 'android' ? 30 : 0,
-    },
-    headerContent: {
-        padding: 15,
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-    },
-    headerTitle: {
-        fontSize: 18,
-        fontWeight: '500',
-    },
-    content: {
-        padding: 15,
-        paddingBottom: 140,
-    },
-    section: {
-        backgroundColor: '#fff',
-        borderRadius: 8,
-        padding: 15,
-        marginBottom: 15,
-        elevation: 1,
-    },
-    sectionTitle: {
-        fontSize: 16,
-        fontWeight: 'bold',
-        marginBottom: 15,
-        color: '#333',
-    },
-    addressBox: {
-        flexDirection: 'row',
-        alignItems: 'center',
-    },
-    link: {
-        color: '#3483fa',
-        fontWeight: 'bold',
-        fontSize: 13,
-    },
-    paymentOption: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingVertical: 15,
-    },
-    paymentLabel: {
-        fontSize: 14,
-        color: '#333',
-        fontWeight: '500',
-    },
-    paymentSubLabel: {
-        fontSize: 12,
-        color: '#00a650',
-    },
-    row: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        marginBottom: 8,
-    },
-    totalLabel: {
-        fontSize: 16,
-        fontWeight: 'bold',
-    },
-    totalValue: {
-        fontSize: 20,
-        fontWeight: 'bold',
-    },
-    footer: {
-        position: 'absolute',
-        bottom: 0,
-        left: 0,
-        right: 0,
-        backgroundColor: '#fff',
-        padding: 15,
-        borderTopWidth: 1,
-        borderColor: '#eee',
-    },
-    payBtn: {
-        backgroundColor: theme.colors.primary,
-        padding: 15,
-        borderRadius: 6,
-        alignItems: 'center',
-    },
-    payText: {
-        color: '#fff',
-        fontSize: 16,
-        fontWeight: 'bold',
-    },
+    container: { flex: 1, backgroundColor: '#f5f5f5' },
+    header: { backgroundColor: theme.colors.secondary, paddingTop: Platform.OS === 'android' ? 30 : 0 },
+    headerContent: { padding: 15, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+    headerTitle: { fontSize: 18, fontWeight: '500' },
+    content: { padding: 15, paddingBottom: 140 },
+    section: { backgroundColor: '#fff', borderRadius: 8, padding: 15, marginBottom: 15, elevation: 1 },
+    sectionTitle: { fontSize: 16, fontWeight: 'bold', marginBottom: 15, color: '#333' },
+    addressBox: { flexDirection: 'row', alignItems: 'center' },
+    link: { color: '#3483fa', fontWeight: 'bold', fontSize: 13 },
+    paymentOption: { flexDirection: 'row', alignItems: 'center', paddingVertical: 15 },
+    paymentLabel: { fontSize: 14, color: '#333', fontWeight: '500' },
+    paymentSubLabel: { fontSize: 12, color: '#00a650' },
+    row: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
+    totalLabel: { fontSize: 16, fontWeight: 'bold' },
+    totalValue: { fontSize: 20, fontWeight: 'bold' },
+    footer: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: '#fff', padding: 15, borderTopWidth: 1, borderColor: '#eee' },
+    payBtn: { backgroundColor: theme.colors.primary, padding: 15, borderRadius: 6, alignItems: 'center' },
+    payText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
 });

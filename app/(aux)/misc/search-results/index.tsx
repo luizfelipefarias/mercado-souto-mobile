@@ -22,6 +22,9 @@ type Product = {
   price: number;
   stock: number;
   imageURL?: string[];
+  category?: {
+      name: string;
+  };
 };
 
 export default function SearchResults() {
@@ -45,9 +48,21 @@ export default function SearchResults() {
       const products: Product[] = Array.isArray(response.data) ? response.data : [];
 
 
-      const filtered = products.filter(product =>
-        product.title.toLowerCase().includes(searchTerm)
-      );
+      const filtered = products.filter(product => {
+        const titleMatch = product.title.toLowerCase().includes(searchTerm);
+        
+
+        const categoryMatch = product.category?.name?.toLowerCase().includes(searchTerm);
+        
+
+        let extraMatch = false;
+        if (searchTerm === 'tecnologia') {
+             const cat = product.category?.name?.toLowerCase() || '';
+             extraMatch = cat.includes('celular') || cat.includes('comput') || cat.includes('eletr');
+        }
+
+        return titleMatch || categoryMatch || extraMatch;
+      });
 
       setResults(filtered);
     } catch (err) {
@@ -172,7 +187,8 @@ export default function SearchResults() {
           data={results}
           renderItem={renderItem}
           keyExtractor={item => String(item.id)}
-          contentContainerStyle={{ padding: 0 }} 
+          contentContainerStyle={{ paddingBottom: 20 }} 
+          showsVerticalScrollIndicator={false}
           ListEmptyComponent={ListEmpty}
         />
       )}

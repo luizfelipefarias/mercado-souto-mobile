@@ -5,107 +5,102 @@ import {
   FlatList,
   Image,
   TouchableOpacity,
-  SafeAreaView,
   StatusBar,
-  Platform,
   ActivityIndicator,
-  RefreshControl
+  RefreshControl,
+  Platform
 } from 'react-native';
-import { Text } from 'react-native-paper';
+import { Text, Button } from 'react-native-paper';
 import { useRouter } from 'expo-router';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { theme } from '../../../../src/constants/theme'; 
-import { useAuth } from '../../../../src/context/AuthContext';
-import api from '../../../../src/services/api';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
-type OrderItem = {
-  id: number;
-  product: {
-    id: number;
-    title: string;
-    imageURL: string[];
-  };
-  quantity: number;
-  price: number;
-};
+import { theme } from '@/constants/theme'; 
+import { useAuth } from '@/context/AuthContext';
+import { useOrder, Order } from '@/context/OrderContext'; 
 
-type Order = {
-  id: number;
-  date: string;
-  status: string;
-  items: OrderItem[];
-  total: number;
-};
-
-export default function MyPurchases() {
+export default function MyPurchasesScreen() {
   const router = useRouter();
-  const { user } = useAuth();
-
-  const [purchases, setPurchases] = useState<Order[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { user, isGuest } = useAuth();
+  
+  const { orders, loadingOrder, fetchMyOrders } = useOrder();
   const [refreshing, setRefreshing] = useState(false);
 
-  const fetchOrders = useCallback(async () => {
-    try {
-      
-      const userId = (user as any)?.id;
-      if (!userId) return;
-
-      const { data } = await api.get(`/api/purchase/by-client/${userId}`);
-      
-     
-      const sortedData = Array.isArray(data) 
-        ? data.sort((a: Order, b: Order) => new Date(b.date).getTime() - new Date(a.date).getTime()) 
-        : [];
-
-      setPurchases(sortedData);
-    } catch (error) {
-      console.log('Erro ao buscar compras:', error);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, [user]);
-
   useEffect(() => {
-    fetchOrders();
-  }, [fetchOrders]);
+    if (!isGuest && user) {
+        fetchMyOrders();
+    }
+  }, [user, isGuest]);
 
-  const onRefresh = useCallback(() => {
+  const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    fetchOrders();
-  }, [fetchOrders]);
+    await fetchMyOrders();
+    setRefreshing(false);
+  }, [fetchMyOrders]);
+
+  if (!user || isGuest) {
+      return (
+        <View style={styles.container}>
+            <StatusBar barStyle="dark-content" backgroundColor={theme.colors.secondary} />
+            <SafeAreaView style={styles.header} edges={['top']}>
+                <View style={styles.headerContent}>
+                    <TouchableOpacity onPress={() => router.back()} style={{ padding: 5 }}>
+                        <MaterialCommunityIcons name="arrow-left" size={24} color="#333" />
+                    </TouchableOpacity>
+                    <Text style={styles.headerTitle}>Minhas Compras</Text>
+                    <View style={{ width: 34 }} />
+                </View>
+            </SafeAreaView>
+
+            <View style={styles.guestContainer}>
+                <MaterialCommunityIcons name="lock-outline" size={80} color="#ddd" />
+                <Text style={styles.guestTitle}>Faça login para ver suas compras</Text>
+                <Text style={styles.guestSub}>
+                    Acompanhe seus pedidos, veja o histórico e compre novamente seus produtos favoritos.
+                </Text>
+                
+                <Button 
+                    mode="contained" 
+                    onPress={() => router.push('/(auth)/login' as any)}
+                    style={styles.loginButton}
+                    labelStyle={{ fontWeight: 'bold' }}
+                >
+                    Entrar na minha conta
+                </Button>
+
+                <TouchableOpacity onPress={() => router.push('/(auth)/register' as any)}>
+                    <Text style={styles.registerLink}>Criar conta grátis</Text>
+                </TouchableOpacity>
+            </View>
+        </View>
+      );
+  }
 
   const formatDate = (dateString: string) => {
     if (!dateString) return '';
     try {
-      const date = new Date(dateString);
-      return date.toLocaleDateString('pt-BR', { day: 'numeric', month: 'long' });
+      return new Date(dateString).toLocaleDateString('pt-BR', { 
+        day: 'numeric', 
+        month: 'long' 
+      });
     } catch {
-      return dateString;
+      return '';
     }
   };
 
-  const translateStatus = (status: string) => {
-    const map: Record<string, string> = {
-      DELIVERED: 'Entregue',
-      PENDING: 'Pendente',
-      SHIPPED: 'A caminho',
-      CANCELED: 'Cancelado',
-      APPROVED: 'Aprovado',
-      PREPARING: 'Em preparação'
+  const getStatusInfo = (status: string) => {
+    const map: Record<string, { label: string, color: string }> = {
+      APPROVED: { label: 'Compra aprovada', color: '#00a650' }, 
+      PENDING: { label: 'Pagamento pendente', color: '#ff9900' }, 
+      PREPARING: { label: 'Em preparação', color: '#3483fa' }, 
+      SHIPPED: { label: 'A caminho', color: '#3483fa' },
+      DELIVERED: { label: 'Entregue', color: '#00a650' },
+      CANCELED: { label: 'Cancelado', color: '#ff3e3e' }, 
     };
-    return map[status] || status;
-  };
-
-  const getStatusColor = (status: string) => {
-    if (status === 'CANCELED') return '#ff3e3e'; 
-    if (status === 'PENDING') return '#ff9900'; 
-    return '#00a650'; // Verde
+    return map[status] || { label: status, color: '#666' };
   };
 
   const handleOrderPress = (orderId: number) => {
-   
     router.push(`/(aux)/account/order/${orderId}` as any);
   };
 
@@ -114,11 +109,17 @@ export default function MyPurchases() {
   };
 
   const renderItem = ({ item }: { item: Order }) => {
-    const firstItem = item.items && item.items.length > 0 ? item.items[0] : null;
+    const firstItem = item.orderItems && item.orderItems.length > 0 ? item.orderItems[0] : null;
+    
     if (!firstItem) return null;
 
-    const hasMoreItems = item.items.length > 1;
-    const imageUri = firstItem.product?.imageURL?.[0] || 'https://via.placeholder.com/150';
+    const hasMoreItems = item.orderItems.length > 1;
+    
+    const imageUri = (firstItem.product.imageURL && firstItem.product.imageURL.length > 0)
+      ? firstItem.product.imageURL[0]
+      : null;
+
+    const statusInfo = getStatusInfo(item.status);
 
     return (
       <TouchableOpacity 
@@ -127,25 +128,31 @@ export default function MyPurchases() {
         activeOpacity={0.9}
       >
         <View style={styles.dateRow}>
-          <Text style={styles.dateText}>{formatDate(item.date)}</Text>
+          <Text style={styles.dateText}>{formatDate(item.createdAt)}</Text>
           <MaterialCommunityIcons name="chevron-right" size={20} color="#ccc" />
         </View>
 
         <View style={styles.contentRow}>
-          <Image 
-            source={{ uri: imageUri }} 
-            style={styles.productImage} 
-            resizeMode="contain" 
-          />
+          {imageUri ? (
+            <Image 
+              source={{ uri: imageUri }} 
+              style={styles.productImage} 
+              resizeMode="contain" 
+            />
+          ) : (
+            <View style={[styles.productImage, styles.placeholderImage]}>
+               <MaterialCommunityIcons name="image-off-outline" size={24} color="#ccc"/>
+            </View>
+          )}
 
           <View style={styles.infoColumn}>
-            <Text style={[styles.statusText, { color: getStatusColor(item.status) }]}>
-              {translateStatus(item.status)}
+            <Text style={[styles.statusText, { color: statusInfo.color }]}>
+              {statusInfo.label}
             </Text>
 
             <Text style={styles.productTitle} numberOfLines={2}>
               {firstItem.product.title}
-              {hasMoreItems && <Text style={styles.moreText}> + {item.items.length - 1} itens</Text>}
+              {hasMoreItems && <Text style={styles.moreText}> + {item.orderItems.length - 1} itens</Text>}
             </Text>
 
             <TouchableOpacity 
@@ -164,7 +171,7 @@ export default function MyPurchases() {
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor={theme.colors.secondary} />
 
-      <SafeAreaView style={styles.header}>
+      <SafeAreaView style={styles.header} edges={['top']}>
         <View style={styles.headerContent}>
           <TouchableOpacity onPress={() => router.back()} style={{ padding: 5 }}>
             <MaterialCommunityIcons name="arrow-left" size={24} color="#333" />
@@ -178,13 +185,13 @@ export default function MyPurchases() {
         </View>
       </SafeAreaView>
 
-      {loading ? (
+      {loadingOrder && !refreshing ? (
         <View style={styles.centerLoading}>
           <ActivityIndicator size="large" color={theme.colors.primary} />
         </View>
       ) : (
         <FlatList
-          data={purchases}
+          data={orders}
           keyExtractor={(item) => String(item.id)}
           renderItem={renderItem}
           contentContainerStyle={styles.listContent}
@@ -200,7 +207,7 @@ export default function MyPurchases() {
               <Text style={styles.emptySub}>Confira nossas ofertas e comece a comprar agora!</Text>
               <TouchableOpacity 
                 style={styles.goShopButton}
-                onPress={() => router.push('/(tabs)')}
+                onPress={() => router.push('/(tabs)' as any)}
               >
                 <Text style={styles.goShopText}>Ir para o início</Text>
               </TouchableOpacity>
@@ -219,7 +226,6 @@ const styles = StyleSheet.create({
   },
   header: {
     backgroundColor: theme.colors.secondary,
-    paddingTop: Platform.OS === 'android' ? 30 : 0,
     elevation: 2,
   },
   headerContent: {
@@ -228,7 +234,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 15,
     paddingBottom: 12,
-    height: 50
+    paddingTop: 10,
   },
   headerTitle: {
     fontSize: 18,
@@ -246,7 +252,6 @@ const styles = StyleSheet.create({
     padding: 15,
     paddingBottom: 40,
   },
-
 
   card: {
     backgroundColor: '#fff',
@@ -284,6 +289,10 @@ const styles = StyleSheet.create({
     backgroundColor: '#f9f9f9',
     marginRight: 15,
   },
+  placeholderImage: {
+    justifyContent: 'center',
+    alignItems: 'center'
+  },
   infoColumn: {
     flex: 1,
     justifyContent: 'space-between',
@@ -316,6 +325,40 @@ const styles = StyleSheet.create({
     fontSize: 13,
   },
 
+  guestContainer: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+      padding: 30,
+      backgroundColor: '#f5f5f5'
+  },
+  guestTitle: {
+      fontSize: 20,
+      fontWeight: 'bold',
+      color: '#333',
+      marginTop: 20,
+      marginBottom: 10,
+      textAlign: 'center'
+  },
+  guestSub: {
+      fontSize: 14,
+      color: '#666',
+      textAlign: 'center',
+      marginBottom: 30,
+      lineHeight: 20
+  },
+  loginButton: {
+      width: '100%',
+      backgroundColor: theme.colors.primary,
+      paddingVertical: 5,
+      borderRadius: 6,
+      marginBottom: 15
+  },
+  registerLink: {
+      color: theme.colors.primary,
+      fontWeight: 'bold',
+      fontSize: 16
+  },
 
   emptyContainer: {
     alignItems: 'center',

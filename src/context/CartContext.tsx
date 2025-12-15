@@ -51,11 +51,13 @@ export function CartProvider({ children }: { children: ReactNode }) {
   function addToCart(newItem: Partial<CartItem>) {
     setCartItems((prevItems) => {
       const itemExists = prevItems.find((item) => String(item.id) === String(newItem.id));
+      
+      const quantityToAdd = newItem.quantity && newItem.quantity > 0 ? newItem.quantity : 1;
 
       if (itemExists) {
         return prevItems.map((item) =>
           String(item.id) === String(newItem.id)
-            ? { ...item, quantity: (item.quantity || 1) + 1 }
+            ? { ...item, quantity: (item.quantity || 1) + quantityToAdd }
             : item
         );
       }
@@ -65,7 +67,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
         name: newItem.name || 'Produto sem nome',
         price: Number(newItem.price) || 0,
         image: newItem.image || '',
-        quantity: 1,
+        quantity: quantityToAdd,
         shipping: Number(newItem.shipping) || 0
       };
 
