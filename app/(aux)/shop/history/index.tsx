@@ -20,15 +20,13 @@ export default function History() {
     const router = useRouter();
     const { history, clearHistory } = useHistory();
 
-    // 🟢 CORREÇÃO: Adicionando lógica de confirmação específica para a Web
+    // Lógica de confirmação para Web e Mobile
     const handleClear = () => {
         if (Platform.OS === 'web') {
-            // Usa window.confirm, que funciona no navegador
             if (window.confirm('Deseja apagar todo o histórico?')) {
                 clearHistory();
             }
         } else {
-            // Usa Alert.alert nativo para dispositivos móveis
             Alert.alert('Limpar', 'Deseja apagar todo o histórico?', [
                 { text: 'Cancelar', style: 'cancel' },
                 { text: 'Apagar', style: 'destructive', onPress: clearHistory }
@@ -36,27 +34,34 @@ export default function History() {
         }
     };
 
-    const renderItem = ({ item }: { item: any }) => (
-        <TouchableOpacity
-            style={styles.card}
-            onPress={() => router.push(`/(aux)/shop/product/${item.id}` as any)}
-        >
-            <View style={styles.imageContainer}>
-                {item.image ? (
-                    <Image source={{ uri: item.image }} style={styles.image} resizeMode="contain" />
-                ) : (
-                    <MaterialCommunityIcons name="image-off-outline" size={40} color="#ddd" />
-                )}
-            </View>
-            
-            <View style={styles.info}>
-                <Text style={styles.title} numberOfLines={2}>{item.title}</Text>
-                <Text style={styles.price}>R$ {item.price.toFixed(2).replace('.', ',')}</Text>
-            </View>
-            
-            <MaterialCommunityIcons name="chevron-right" size={24} color="#ccc" />
-        </TouchableOpacity>
-    );
+    const renderItem = ({ item }: { item: any }) => {
+        // 🟢 CORREÇÃO: Blindagem do preço
+        // Se item.price for undefined, null ou texto inválido, vira 0.
+        const safePrice = Number(item.price) || 0;
+
+        return (
+            <TouchableOpacity
+                style={styles.card}
+                onPress={() => router.push(`/(aux)/shop/product/${item.id}` as any)}
+            >
+                <View style={styles.imageContainer}>
+                    {item.image ? (
+                        <Image source={{ uri: item.image }} style={styles.image} resizeMode="contain" />
+                    ) : (
+                        <MaterialCommunityIcons name="image-off-outline" size={40} color="#ddd" />
+                    )}
+                </View>
+                
+                <View style={styles.info}>
+                    <Text style={styles.title} numberOfLines={2}>{item.title}</Text>
+                    {/* Usa safePrice aqui para garantir que .toFixed funcione */}
+                    <Text style={styles.price}>R$ {safePrice.toFixed(2).replace('.', ',')}</Text>
+                </View>
+                
+                <MaterialCommunityIcons name="chevron-right" size={24} color="#ccc" />
+            </TouchableOpacity>
+        );
+    };
 
     return (
         <View style={styles.container}>
@@ -64,7 +69,7 @@ export default function History() {
 
             <SafeAreaView style={styles.header}>
                 <View style={styles.headerContent}>
-                    {/* 🟢 CORREÇÃO DE NAVEGAÇÃO: Fallback seguro para router.back() */}
+                    {/* Fallback seguro para navegação */}
                     <TouchableOpacity 
                         onPress={() => router.canGoBack() ? router.back() : router.replace('/(tabs)')}
                     >

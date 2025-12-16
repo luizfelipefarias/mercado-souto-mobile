@@ -10,7 +10,7 @@ import {
     StatusBar,
     ActivityIndicator,
 } from 'react-native';
-import { Text, RadioButton, Divider } from 'react-native-paper';
+import { Text, Divider, TextInput } from 'react-native-paper';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { theme } from '../../../../src/constants/theme';
@@ -23,6 +23,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 const SELECTED_ADDRESS_KEY = '@selected_address_id'; 
 const GUEST_ADDRESS_KEY = '@guest_addresses';
 
+// Tipo para exibição combinando a interface Address com campos extras possíveis
 type DisplayAddress = Address & {
     city?: string;
     state?: string;
@@ -34,16 +35,38 @@ export default function Checkout() {
     const { cartItems, clearCart } = useCart();
     const { user, signed, isGuest } = useAuth();
 
-    const [paymentMethod, setPaymentMethod] = useState<'pix' | 'card'>('pix');
     const [loading, setLoading] = useState(false);
     const [loadingAddress, setLoadingAddress] = useState(false);
     const [address, setAddress] = useState<DisplayAddress | null>(null);
+
+    // Estados do Cartão
+    const [cardNumber, setCardNumber] = useState('');
+    const [cardName, setCardName] = useState('');
+    const [cardExpiry, setCardExpiry] = useState('');
+    const [cardCVV, setCardCVV] = useState('');
 
     const total = useMemo(
         () => cartItems.reduce((sum, item) => sum + (item.price * (item.quantity || 1)), 0),
         [cartItems]
     );
 
+    // --- FORMATAÇÃO DO CARTÃO ---
+    const handleCardNumberChange = (text: string) => {
+        const cleaned = text.replace(/\D/g, '');
+        const formatted = cleaned.replace(/(\d{4})(?=\d)/g, '$1 ').substring(0, 19);
+        setCardNumber(formatted);
+    };
+
+    const handleExpiryChange = (text: string) => {
+        const cleaned = text.replace(/\D/g, '');
+        if (cleaned.length >= 2) {
+            setCardExpiry(`${cleaned.substring(0, 2)}/${cleaned.substring(2, 4)}`);
+        } else {
+            setCardExpiry(cleaned);
+        }
+    };
+
+    // Carrega o endereço selecionado
     const loadAddressData = useCallback(async () => {
         if (!signed && !isGuest) return;
 
@@ -64,6 +87,7 @@ export default function Checkout() {
 
             let selectedAddress = allAddresses.find(addr => addr.id === selectedId);
             
+            // Fallback: pega o primeiro se não houver selecionado
             if (!selectedAddress && allAddresses.length > 0) {
                 selectedAddress = allAddresses[0];
                 await AsyncStorage.setItem(SELECTED_ADDRESS_KEY, selectedAddress.id.toString());
@@ -95,10 +119,11 @@ export default function Checkout() {
     );
 
     const handleFinish = async () => {
+        // 1. Validações
         if (!signed || (user as any)?.isGuest) {
             Alert.alert('Login necessário', 'Você precisa estar logado para finalizar.', [
-                { text: 'Cancelar', style: 'cancel' },
                 { text: 'Entrar', onPress: () => router.push('/(auth)/login' as any) },
+                { text: 'Cancelar', style: 'cancel' },
             ]);
             return;
         }
@@ -109,41 +134,47 @@ export default function Checkout() {
         }
 
         if (!address) {
-            Alert.alert('Endereço', 'Adicione um endereço de entrega.', [
-                { text: 'Cancelar', style: 'cancel' },
-                { text: 'Adicionar', onPress: () => router.push('/(aux)/account/address' as any) },
-            ]);
+            Alert.alert('Endereço', 'Adicione um endereço de entrega.');
+            return;
+        }
+
+        if (cardNumber.length < 16 || !cardName || cardExpiry.length < 5 || cardCVV.length < 3) {
+            Alert.alert('Dados inválidos', 'Por favor, preencha corretamente os dados do cartão.');
             return;
         }
 
         setLoading(true);
         try {
-            const orderData = {
-                clientId: (user as any)?.id,
-                items: cartItems.map((item) => ({
-                    productId: item.id, 
-                    quantity: item.quantity || 1,
-                    price: item.price,
-                })),
-                addressId: address.id,
-                total: Number(total.toFixed(2)),
-                paymentMethod,
-                status: 'PENDING',
-            };
+            // A API é endpoint por produto: /api/order/product/{productId}/address/{clientAddressId}
+            // Precisamos criar um array de promessas para enviar cada item do carrinho individualmente
+            const orderPromises = cartItems.map(item => {
+                const quantity = item.quantity || 1;
+                // URL params: productId e addressId
+                // Body: quantity
+                return api.post(
+                    `/api/order/product/${item.id}/address/${address.id}`, 
+                    { quantity: quantity }
+                );
+            });
 
-            await api.post('/api/orders', orderData);
+            // Executa todas as requisições
+            await Promise.all(orderPromises);
+            
+            console.log("Pedidos realizados com sucesso");
+            
             clearCart();
             
             if (router.canDismiss()) router.dismissAll(); 
+            // Redireciona para 'Minhas Compras' pois múltiplos pedidos foram gerados
             router.replace('/(aux)/shop/my-purchases' as any);
             
             setTimeout(() => {
-                 Alert.alert('Sucesso!', 'Pedido realizado com sucesso.');
+                 Alert.alert('Sucesso!', 'Compra realizada com sucesso!');
             }, 500);
             
         } catch (error: any) {
             console.log('Erro ao finalizar:', error);
-            const msg = error?.response?.data?.message || 'Erro ao finalizar compra.';
+            const msg = error?.response?.data?.message || 'Erro ao processar pedido. Tente novamente.';
             Alert.alert('Erro', msg);
         } finally {
             setLoading(false);
@@ -158,14 +189,15 @@ export default function Checkout() {
                     <TouchableOpacity onPress={() => router.back()}>
                         <MaterialCommunityIcons name="close" size={24} color="#333" />
                     </TouchableOpacity>
-                    <Text style={styles.headerTitle}>Checkout</Text>
+                    <Text style={styles.headerTitle}>Checkout Seguro</Text>
                     <View style={{ width: 24 }} />
                 </View>
             </SafeAreaView>
 
-            <ScrollView contentContainerStyle={styles.content}>
+            <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+                {/* Endereço */}
                 <View style={styles.section}>
-                    <Text style={styles.sectionTitle}>Endereço de entrega</Text>
+                    <Text style={styles.sectionTitle}>Entregar em</Text>
                     <View style={styles.addressBox}>
                         <MaterialCommunityIcons name="map-marker-outline" size={24} color="#333" />
                         <View style={{ marginLeft: 10, flex: 1 }}>
@@ -177,57 +209,97 @@ export default function Checkout() {
                                     <Text style={{ color: '#666' }}>
                                         {address.cep} - {address.neighborhood}
                                     </Text>
-                                    <Text style={{ color: '#666', fontSize: 12 }}>
-                                        {address.contactName || (user as any)?.name}
-                                    </Text>
                                     {address.city && (
                                         <Text style={{ color: '#999', fontSize: 12 }}>{address.city}/{address.state}</Text>
                                     )}
                                 </>
                             ) : (
-                                <Text style={{ color: '#666' }}>Nenhum endereço selecionado</Text>
+                                <Text style={{ color: '#d63031' }}>Selecione um endereço</Text>
                             )}
                         </View>
                         <TouchableOpacity onPress={() => router.push('/(aux)/account/address' as any)}>
-                            <Text style={styles.link}>Trocar</Text>
+                            <Text style={styles.link}>{address ? 'Alterar' : 'Adicionar'}</Text>
                         </TouchableOpacity>
                     </View>
                 </View>
 
+                {/* Dados do Cartão */}
                 <View style={styles.section}>
-                    <Text style={styles.sectionTitle}>Como você prefere pagar?</Text>
-                    <TouchableOpacity style={styles.paymentOption} onPress={() => setPaymentMethod('pix')}>
-                        <RadioButton value="pix" status={paymentMethod === 'pix' ? 'checked' : 'unchecked'} onPress={() => setPaymentMethod('pix')} color="#00a650" />
-                        <MaterialCommunityIcons name="qrcode" size={24} color="#00a650" style={{ marginLeft: 10 }} />
-                        <View style={{ marginLeft: 10 }}>
-                            <Text style={styles.paymentLabel}>Pix (Aprovação imediata)</Text>
-                            <Text style={styles.paymentSubLabel}>Use o app do seu banco</Text>
+                    <View style={styles.cardHeader}>
+                        <Text style={styles.sectionTitle}>Dados do Cartão</Text>
+                        <View style={styles.secureBadge}>
+                            <MaterialCommunityIcons name="lock" size={12} color="#00a650" />
+                            <Text style={styles.secureText}>Seguro</Text>
                         </View>
-                    </TouchableOpacity>
-                    <Divider />
-                    <TouchableOpacity style={styles.paymentOption} onPress={() => setPaymentMethod('card')}>
-                        <RadioButton value="card" status={paymentMethod === 'card' ? 'checked' : 'unchecked'} onPress={() => setPaymentMethod('card')} color="#00a650" />
-                        <MaterialCommunityIcons name="credit-card-outline" size={24} color="#333" style={{ marginLeft: 10 }} />
-                        <View style={{ marginLeft: 10 }}>
-                            <Text style={styles.paymentLabel}>Cartão de Crédito</Text>
-                            <Text style={styles.paymentSubLabel}>Até 12x sem juros</Text>
-                        </View>
-                    </TouchableOpacity>
+                    </View>
+                    
+                    <TextInput
+                        label="Número do Cartão"
+                        value={cardNumber}
+                        onChangeText={handleCardNumberChange}
+                        keyboardType="numeric"
+                        maxLength={19}
+                        mode="outlined"
+                        style={styles.input}
+                        activeOutlineColor={theme.colors.primary}
+                        left={<TextInput.Icon icon="credit-card" />}
+                    />
+
+                    <TextInput
+                        label="Nome impresso no cartão"
+                        value={cardName}
+                        onChangeText={setCardName}
+                        autoCapitalize="characters"
+                        mode="outlined"
+                        style={styles.input}
+                        activeOutlineColor={theme.colors.primary}
+                    />
+
+                    <View style={styles.rowInputs}>
+                        <TextInput
+                            label="Validade (MM/AA)"
+                            value={cardExpiry}
+                            onChangeText={handleExpiryChange}
+                            keyboardType="numeric"
+                            maxLength={5}
+                            mode="outlined"
+                            style={[styles.input, { flex: 1, marginRight: 10 }]}
+                            activeOutlineColor={theme.colors.primary}
+                        />
+                        <TextInput
+                            label="CVV"
+                            value={cardCVV}
+                            onChangeText={setCardCVV}
+                            keyboardType="numeric"
+                            maxLength={4}
+                            mode="outlined"
+                            style={[styles.input, { flex: 0.6 }]}
+                            activeOutlineColor={theme.colors.primary}
+                            secureTextEntry
+                            right={<TextInput.Icon icon="help-circle-outline" onPress={() => Alert.alert('CVV', 'Código de 3 dígitos no verso do cartão')} />}
+                        />
+                    </View>
+                    
+                    <View style={styles.installmentsInfo}>
+                         <MaterialCommunityIcons name="check-circle-outline" size={16} color="#00a650" />
+                         <Text style={{ marginLeft: 5, color: '#00a650', fontSize: 12 }}>Pagamento em 1x sem juros</Text>
+                    </View>
                 </View>
 
+                {/* Resumo */}
                 <View style={styles.section}>
-                    <Text style={styles.sectionTitle}>Resumo</Text>
+                    <Text style={styles.sectionTitle}>Resumo da Compra</Text>
                     <View style={styles.row}>
-                        <Text>Produtos</Text>
+                        <Text>Produtos ({cartItems.length})</Text>
                         <Text>R$ {total.toFixed(2).replace('.', ',')}</Text>
                     </View>
                     <View style={styles.row}>
                         <Text>Frete</Text>
-                        <Text style={{ color: '#00a650' }}>Grátis</Text>
+                        <Text style={{ color: '#00a650', fontWeight: 'bold' }}>Grátis</Text>
                     </View>
                     <Divider style={{ marginVertical: 10 }} />
                     <View style={styles.row}>
-                        <Text style={styles.totalLabel}>Você paga</Text>
+                        <Text style={styles.totalLabel}>Total a pagar</Text>
                         <Text style={styles.totalValue}>R$ {total.toFixed(2).replace('.', ',')}</Text>
                     </View>
                 </View>
@@ -235,7 +307,11 @@ export default function Checkout() {
 
             <View style={styles.footer}>
                 <TouchableOpacity style={styles.payBtn} onPress={handleFinish} disabled={loading}>
-                    {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.payText}>Confirmar compra</Text>}
+                    {loading ? (
+                        <ActivityIndicator color="#fff" />
+                    ) : (
+                        <Text style={styles.payText}>Finalizar Pagamento</Text>
+                    )}
                 </TouchableOpacity>
             </View>
         </View>
@@ -247,18 +323,21 @@ const styles = StyleSheet.create({
     header: { backgroundColor: theme.colors.secondary, paddingTop: Platform.OS === 'android' ? 30 : 0 },
     headerContent: { padding: 15, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
     headerTitle: { fontSize: 18, fontWeight: '500' },
-    content: { padding: 15, paddingBottom: 140 },
-    section: { backgroundColor: '#fff', borderRadius: 8, padding: 15, marginBottom: 15, elevation: 1 },
+    content: { padding: 15, paddingBottom: 100 }, 
+    section: { backgroundColor: '#fff', borderRadius: 8, padding: 15, marginBottom: 15, elevation: 2 },
     sectionTitle: { fontSize: 16, fontWeight: 'bold', marginBottom: 15, color: '#333' },
     addressBox: { flexDirection: 'row', alignItems: 'center' },
-    link: { color: '#3483fa', fontWeight: 'bold', fontSize: 13 },
-    paymentOption: { flexDirection: 'row', alignItems: 'center', paddingVertical: 15 },
-    paymentLabel: { fontSize: 14, color: '#333', fontWeight: '500' },
-    paymentSubLabel: { fontSize: 12, color: '#00a650' },
+    link: { color: '#3483fa', fontWeight: 'bold', fontSize: 13, padding: 5 },
+    cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
+    secureBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#e6f7ee', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 12 },
+    secureText: { color: '#00a650', fontSize: 10, fontWeight: 'bold', marginLeft: 2 },
+    input: { marginBottom: 12, backgroundColor: '#fff', fontSize: 14, height: 45 },
+    rowInputs: { flexDirection: 'row', justifyContent: 'space-between' },
+    installmentsInfo: { flexDirection: 'row', marginTop: 5, alignItems: 'center' },
     row: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
-    totalLabel: { fontSize: 16, fontWeight: 'bold' },
-    totalValue: { fontSize: 20, fontWeight: 'bold' },
-    footer: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: '#fff', padding: 15, borderTopWidth: 1, borderColor: '#eee' },
-    payBtn: { backgroundColor: theme.colors.primary, padding: 15, borderRadius: 6, alignItems: 'center' },
+    totalLabel: { fontSize: 18, fontWeight: 'bold' },
+    totalValue: { fontSize: 20, fontWeight: 'bold', color: '#333' },
+    footer: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: '#fff', padding: 15, borderTopWidth: 1, borderColor: '#eee', elevation: 10 },
+    payBtn: { backgroundColor: theme.colors.primary, paddingVertical: 14, borderRadius: 6, alignItems: 'center' },
     payText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
 });

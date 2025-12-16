@@ -12,6 +12,7 @@ const STORAGE_GUEST = '@is_guest';
 interface AuthContextData {
   signed: boolean;
   user: Client | null;
+  token: string | null; // <--- 1. Adicionado na interface
   loading: boolean;
   isGuest: boolean;
   signIn: (email: string, password: string) => Promise<void>;
@@ -25,6 +26,7 @@ const AuthContext = createContext<AuthContextData>({} as AuthContextData);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<Client | null>(null);
+  const [token, setToken] = useState<string | null>(null); // <--- 2. Adicionado estado para o token
   const [isGuest, setIsGuest] = useState(false);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
@@ -54,6 +56,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       await AsyncStorage.multiRemove([STORAGE_TOKEN, STORAGE_USER, STORAGE_GUEST]);
       api.defaults.headers.Authorization = null;
       setUser(null);
+      setToken(null); // <--- Limpa o token ao sair
       setIsGuest(false);
       router.replace('/');
     } catch (error) {
@@ -64,7 +67,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     async function loadStorageData() {
       try {
-        const [token, storedUser, guestFlag] = await AsyncStorage.multiGet([
+        const [storedToken, storedUser, guestFlag] = await AsyncStorage.multiGet([
           STORAGE_TOKEN, 
           STORAGE_USER,
           STORAGE_GUEST
@@ -73,8 +76,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (guestFlag[1] === 'true') {
           setIsGuest(true);
           setUser({ name: 'Visitante', id: null, cart: null } as unknown as Client); 
-        } else if (token[1] && storedUser[1]) {
-          api.defaults.headers.Authorization = `Bearer ${token[1]}`;
+        } else if (storedToken[1] && storedUser[1]) {
+          api.defaults.headers.Authorization = `Bearer ${storedToken[1]}`;
+          setToken(storedToken[1]); // <--- Restaura o token no estado
           setUser(JSON.parse(storedUser[1]));
           setIsGuest(false);
         }
@@ -91,12 +95,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setLoading(true);
     try {
       const authResponse = await api.post('/api/login', { email, password });
-      const token = authResponse.data.token || authResponse.data;
+      const responseToken = authResponse.data.token || authResponse.data;
 
-      if (!token) throw new Error("Token não fornecido pela API");
+      if (!responseToken) throw new Error("Token não fornecido pela API");
 
-      api.defaults.headers.Authorization = `Bearer ${token}`;
-      await AsyncStorage.setItem(STORAGE_TOKEN, token);
+      api.defaults.headers.Authorization = `Bearer ${responseToken}`;
+      await AsyncStorage.setItem(STORAGE_TOKEN, responseToken);
+      setToken(responseToken); // <--- Salva o token no estado
 
       const clientData = await fetchClientData(email);
       
@@ -142,6 +147,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       
       api.defaults.headers.Authorization = null;
       setIsGuest(true);
+      setToken(null); // <--- Garante que o token é nulo
       setUser({ name: 'Visitante', id: null, cart: null } as unknown as Client);
       
       router.replace('/(tabs)');
@@ -155,7 +161,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   return (
     <AuthContext.Provider value={{ 
       signed: !!user && !isGuest, 
-      user, 
+      user,
+      token, // <--- 3. Exposto no value para ser consumido
       isGuest,
       loading,
       signIn, 

@@ -15,13 +15,13 @@ import {
 import { Text, Button, Badge } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter, useFocusEffect } from 'expo-router';
-import api from '../../src/services/api';
+import api from '../../src/services/api'; // Verifique se o caminho é api ou clientApi
 import { useAuth } from '../../src/context/AuthContext';
 import { useCart } from '../../src/context/CartContext';
 import { useHistory } from '../../src/context/HistoryContext'; 
 import { useProduct } from '../../src/context/ProductContext'; 
 import { useAndroidNavigationBar } from '../../src/hooks/useAndroidNavigationBar';
-import { theme } from '../../src/constants/theme'; 
+import { Colors } from '../../src/constants/theme'; // Ajuste conforme seu theme real
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Address } from '../../src/interfaces';
 
@@ -30,8 +30,10 @@ const ML_YELLOW = '#FFE600';
 const SELECTED_ADDRESS_KEY = '@selected_address_id';
 const GUEST_ADDRESS_KEY = '@guest_addresses';
 
-// --- CONFIGURAÇÃO DA GRADE DE CATEGORIAS (GRID - 6 ITENS) ---
-// 5 Categorias + 1 Botão "Ver mais" = 2 Linhas limpas
+// Se não tiver Colors definido, use um fallback
+const THEME_PRIMARY = '#3483fa'; 
+
+// --- CONFIGURAÇÃO DA GRADE DE CATEGORIAS ---
 const CATEGORY_GRID = [
     { label: 'Celulares', icon: 'cellphone', query: 'Celulares' },
     { label: 'Roupas', icon: 'tshirt-crew', query: 'Roupas' },
@@ -77,7 +79,7 @@ const errorStyles = StyleSheet.create({
     },
     errorTextTitle: { fontSize: 18, fontWeight: 'bold', marginTop: 15, color: '#d63031' },
     errorTextSub: { fontSize: 14, color: '#666', textAlign: 'center', marginTop: 5, marginBottom: 20 },
-    retryButton: { backgroundColor: theme.colors.primary, marginTop: 10, width: '100%', maxWidth: 250 },
+    retryButton: { backgroundColor: THEME_PRIMARY, marginTop: 10, width: '100%', maxWidth: 250 },
     retryButtonText: { color: '#fff', fontWeight: 'bold' }
 });
 
@@ -252,33 +254,44 @@ export default function Home() {
     }, [user, activeAddressInfo, addressLoading]);
 
     // --- Renderização de Itens ---
-    const renderProductItem = ({ item }: { item: ProductUI }) => (
-        <TouchableOpacity
-            style={styles.productCard}
-            onPress={() => handleProductPress(item.id)}
-            activeOpacity={0.9}
-        >
-            <View style={styles.imageContainer}>
-                {item.imageUri ? (
-                    <RNImage source={{ uri: item.imageUri }} style={styles.productImage} resizeMode="contain" />
-                ) : (
-                    <MaterialCommunityIcons name="image-off-outline" size={40} color="#ddd" />
-                )}
-            </View>
-            <View style={styles.productInfo}>
-                <Text style={styles.productName} numberOfLines={2}>{item.title}</Text>
-                <Text style={styles.oldPrice}>R$ {(item.price * 1.2).toFixed(2).replace('.', ',')}</Text>
-                <View style={styles.priceRow}>
-                    <Text style={styles.price}>R$ {item.price.toFixed(2).replace('.', ',')}</Text>
-                    <Text style={styles.discount}>20% OFF</Text>
+    // 🟢 CORREÇÃO APLICADA AQUI: Blindagem do preço
+    const renderProductItem = ({ item }: { item: ProductUI }) => {
+        // Garante que é número. Se vier null/undefined, assume 0.
+        const safePrice = Number(item.price) || 0;
+
+        return (
+            <TouchableOpacity
+                style={styles.productCard}
+                onPress={() => handleProductPress(item.id)}
+                activeOpacity={0.9}
+            >
+                <View style={styles.imageContainer}>
+                    {item.imageUri ? (
+                        <RNImage source={{ uri: item.imageUri }} style={styles.productImage} resizeMode="contain" />
+                    ) : (
+                        <MaterialCommunityIcons name="image-off-outline" size={40} color="#ddd" />
+                    )}
                 </View>
-                <Text style={styles.installments}>6x R$ {(item.price / 6).toFixed(2).replace('.', ',')} sem juros</Text>
-                {item.stock > 0 && (
-                    <Text style={styles.shipping}>Frete grátis <Text style={styles.fullText}>FULL</Text></Text>
-                )}
-            </View>
-        </TouchableOpacity>
-    );
+                <View style={styles.productInfo}>
+                    <Text style={styles.productName} numberOfLines={2}>{item.title}</Text>
+                    
+                    {/* Usa safePrice em vez de item.price */}
+                    <Text style={styles.oldPrice}>R$ {(safePrice * 1.2).toFixed(2).replace('.', ',')}</Text>
+                    
+                    <View style={styles.priceRow}>
+                        <Text style={styles.price}>R$ {safePrice.toFixed(2).replace('.', ',')}</Text>
+                        <Text style={styles.discount}>20% OFF</Text>
+                    </View>
+                    
+                    <Text style={styles.installments}>6x R$ {(safePrice / 6).toFixed(2).replace('.', ',')} sem juros</Text>
+                    
+                    {item.stock > 0 && (
+                        <Text style={styles.shipping}>Frete grátis <Text style={styles.fullText}>FULL</Text></Text>
+                    )}
+                </View>
+            </TouchableOpacity>
+        );
+    };
 
     const renderLoginCard = () => {
         if (!user || (user as any)?.isGuest) {
@@ -286,7 +299,7 @@ export default function Home() {
                 <View style={styles.loginCardContainer}>
                     <Text style={styles.loginTitle}>Crie uma conta para melhorar sua experiência!</Text>
                     <Button mode="contained" onPress={() => router.push('/(auth)/register' as any)} style={styles.btnPrimary} labelStyle={{ fontWeight: 'bold' }}>Criar conta</Button>
-                    <Button mode="text" onPress={() => router.push('/(auth)/login' as any)} style={styles.btnSecondary} labelStyle={{ color: '#3483fa', fontWeight: 'bold' }}>Entrar na minha conta</Button>
+                    <Button mode="text" onPress={() => router.push('/(auth)/login' as any)} style={styles.btnSecondary} labelStyle={{ color: THEME_PRIMARY, fontWeight: 'bold' }}>Entrar na minha conta</Button>
                 </View>
             );
         }
@@ -297,7 +310,7 @@ export default function Home() {
 
     const renderMainContent = () => {
         if (isGlobalLoading) {
-            return <ActivityIndicator size="large" color={'#3483fa'} style={{ marginTop: 20 }} />;
+            return <ActivityIndicator size="large" color={THEME_PRIMARY} style={{ marginTop: 20 }} />;
         }
 
         if (Object.keys(groupedProducts).length === 0 && !productsLoading) {
@@ -340,7 +353,8 @@ export default function Home() {
                                 const histItem: ProductUI = {
                                     id: item.id,
                                     title: item.title,
-                                    price: item.price,
+                                    // 🟢 CORREÇÃO: Garante que price seja número no histórico também
+                                    price: Number(item.price) || 0,
                                     imageUri: item.image,
                                     stock: 1, 
                                     category: 'Histórico'
@@ -361,7 +375,7 @@ export default function Home() {
                             <Text style={styles.sectionTitle}>{categoryName}</Text>
                             <TouchableOpacity onPress={() => handleSeeAll(categoryName)}>
                                 <Text style={styles.seeAll}>Ver tudo</Text>
-                                <MaterialCommunityIcons name="arrow-right" size={16} color="#3483fa" />
+                                <MaterialCommunityIcons name="arrow-right" size={16} color={THEME_PRIMARY} />
                             </TouchableOpacity>
                         </View>
                         <FlatList
@@ -382,7 +396,7 @@ export default function Home() {
                         {CATEGORY_GRID.map((item, index) => (
                             <TouchableOpacity key={index} style={styles.gridItem} onPress={() => handleGridPress(item)}>
                                 <View style={styles.gridIconCircle}>
-                                    <MaterialCommunityIcons name={item.icon as any} size={28} color={item.label === 'Ver mais' ? '#3483fa' : '#666'} />
+                                    <MaterialCommunityIcons name={item.icon as any} size={28} color={item.label === 'Ver mais' ? THEME_PRIMARY : '#666'} />
                                 </View>
                                 <Text style={styles.gridLabel} numberOfLines={2}>{item.label}</Text>
                             </TouchableOpacity>
@@ -465,11 +479,11 @@ const styles = StyleSheet.create({
     
     // Banner
     bannerContainer: { padding: 15 },
-    banner: { backgroundColor: '#3483fa', height: 150, borderRadius: 8, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, justifyContent: 'space-between', elevation: 4 },
+    banner: { backgroundColor: THEME_PRIMARY, height: 150, borderRadius: 8, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, justifyContent: 'space-between', elevation: 4 },
     bannerTitle: { color: '#FFE600', fontSize: 22, fontWeight: '900', fontStyle: 'italic' },
     bannerSubtitle: { color: '#FFF', fontSize: 20, fontWeight: 'bold', marginBottom: 12 },
     bannerButton: { backgroundColor: '#fff', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20 },
-    bannerButtonText: { color: '#3483fa', fontWeight: 'bold', fontSize: 12 },
+    bannerButtonText: { color: THEME_PRIMARY, fontWeight: 'bold', fontSize: 12 },
 
     // Atalhos
     shortcutsContainer: { height: 95 },
@@ -481,10 +495,10 @@ const styles = StyleSheet.create({
     categorySection: { marginTop: 15, marginBottom: 5 },
     sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 15, marginBottom: 10, alignItems: 'center' },
     sectionTitle: { fontSize: 18, fontWeight: '700', color: '#333' },
-    seeAll: { color: '#3483fa', fontSize: 14, marginRight: 4 },
+    seeAll: { color: THEME_PRIMARY, fontSize: 14, marginRight: 4 },
     productsList: { paddingHorizontal: 10 },
     
-    // Grade de Categorias (Estilo Card Branco - 3 colunas)
+    // Grade de Categorias
     gridSection: { marginTop: 25 },
     gridContainer: { 
         flexDirection: 'row', 
@@ -494,7 +508,7 @@ const styles = StyleSheet.create({
         paddingHorizontal: 10 
     },
     gridItem: { 
-        width: '31%', // 3 Colunas
+        width: '31%', 
         aspectRatio: 1, 
         alignItems: 'center', 
         justifyContent: 'center',
@@ -523,6 +537,6 @@ const styles = StyleSheet.create({
 
     loginCardContainer: { backgroundColor: '#fff', margin: 10, padding: 15, borderRadius: 8, elevation: 2, marginTop: 30 },
     loginTitle: { fontSize: 14, fontWeight: 'bold', textAlign: 'center', marginBottom: 15 },
-    btnPrimary: { backgroundColor: '#3483fa', marginBottom: 10, borderRadius: 6 },
+    btnPrimary: { backgroundColor: THEME_PRIMARY, marginBottom: 10, borderRadius: 6 },
     btnSecondary: { borderRadius: 6 },
 });

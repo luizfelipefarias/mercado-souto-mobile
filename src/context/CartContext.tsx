@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, ReactNode, useEffect } from
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export type CartItem = {
+  title: any;
   id: number;
   name: string;
   price: number;
