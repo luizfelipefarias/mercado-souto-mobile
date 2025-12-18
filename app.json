@@ -18,7 +18,7 @@
         "backgroundImage": "./src/assets/icon/android-icon-background.png",
         "monochromeImage": "./src/assets/icon/android-icon-monochrome.png"
       },
-      "package": "com.mercadosouto.app", 
+      "package": "com.mercadosouto.app",
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false
     },
@@ -53,6 +53,12 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "158bc61e-6cff-4d13-8304-2845993312f5"
+      }
     }
   }
 }

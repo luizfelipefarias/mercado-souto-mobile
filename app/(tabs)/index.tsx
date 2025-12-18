@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { 
     View, 
     StyleSheet, 
@@ -6,50 +6,61 @@ import {
     TouchableOpacity, 
     FlatList,
     StatusBar, 
-    ActivityIndicator, 
     RefreshControl, 
     Platform,
     Image as RNImage, 
-    Dimensions
+    useWindowDimensions, 
+    ImageSourcePropType
 } from 'react-native';
 import { Text, Button, Badge } from 'react-native-paper';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { MaterialCommunityIcons, Ionicons } from '@expo/vector-icons';
 import { useRouter, useFocusEffect } from 'expo-router';
-import api from '../../src/services/api'; // Verifique se o caminho é api ou clientApi
+import { LinearGradient } from 'expo-linear-gradient'; 
+import { SafeAreaView } from 'react-native-safe-area-context';
+
+import api from '../../src/services/api'; 
 import { useAuth } from '../../src/context/AuthContext';
 import { useCart } from '../../src/context/CartContext';
 import { useHistory } from '../../src/context/HistoryContext'; 
 import { useProduct } from '../../src/context/ProductContext'; 
 import { useAndroidNavigationBar } from '../../src/hooks/useAndroidNavigationBar';
-import { Colors } from '../../src/constants/theme'; // Ajuste conforme seu theme real
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Address } from '../../src/interfaces';
 
-const { width } = Dimensions.get('window');
 const ML_YELLOW = '#FFE600'; 
+const BG_GRAY = '#F5F5F5';
+const THEME_PRIMARY = '#3483fa'; 
+const GREEN_FREE = '#00a650';
+
 const SELECTED_ADDRESS_KEY = '@selected_address_id';
 const GUEST_ADDRESS_KEY = '@guest_addresses';
 
-// Se não tiver Colors definido, use um fallback
-const THEME_PRIMARY = '#3483fa'; 
-
-// --- CONFIGURAÇÃO DA GRADE DE CATEGORIAS ---
-const CATEGORY_GRID = [
-    { label: 'Celulares', icon: 'cellphone', query: 'Celulares' },
-    { label: 'Roupas', icon: 'tshirt-crew', query: 'Roupas' },
-    { label: 'Beleza', icon: 'lipstick', query: 'Beleza' },
-    { label: 'Eletro', icon: 'washing-machine', query: 'Eletrodomesticos' },
-    { label: 'Esportes', icon: 'soccer', query: 'Esportes' },
-    { label: 'Ver mais', icon: 'plus', route: '/(tabs)/categories' },
+const BANNER_IMAGES = [
+    require('../../src/assets/img/ui/banner1.webp'),
+    require('../../src/assets/img/ui/carousel0.webp'),
+    require('../../src/assets/img/ui/carousel1.webp'),
+    require('../../src/assets/img/ui/carousel2.webp'),
+    require('../../src/assets/img/ui/carousel3.webp'),
+    require('../../src/assets/img/ui/carousel4.webp'),
 ];
 
-// --- ATALHOS REDONDOS ---
+const VAN_LOGO = require('../../src/assets/img/ui/van-logo.png');
+
 const SHORTCUTS = [
     { id: 1, label: 'Ofertas', icon: 'tag-outline', route: '/(aux)/shop/all-products' },
-    { id: 2, label: 'Categorias', icon: 'format-list-bulleted', route: '/(tabs)/categories' },
-    { id: 3, label: 'Minhas Compras', icon: 'shopping-outline', route: '/(aux)/shop/my-purchases' },
-    { id: 4, label: 'Histórico', icon: 'clock-time-three-outline', route: '/(aux)/shop/history' },
-    { id: 5, label: 'Ajuda', icon: 'help-circle-outline', route: '/(aux)/misc/help' },
+    { id: 2, label: 'Histórico', icon: 'clock-outline', route: '/(aux)/shop/history' },
+    { id: 3, label: 'Minhas Compras', icon: 'shopping-outline', route: '/(aux)/shop/my-purchases/' }, 
+    { id: 4, label: 'Endereços', icon: 'map-marker-outline', route: '/(aux)/account/address/' }, 
+    { id: 5, label: 'Mais', icon: 'plus', route: '/(tabs)/menu' },
+];
+
+const CATEGORY_GRID = [
+    { label: 'Celulares', icon: 'cellphone', query: 'Celulares' },
+    { label: 'Informática', icon: 'laptop', query: 'Informatica' },
+    { label: 'Casa', icon: 'sofa', query: 'Casa' },
+    { label: 'Ferramentas', icon: 'tools', query: 'Ferramentas' },
+    { label: 'Esportes', icon: 'soccer', query: 'Esportes' },
+    { label: 'Ver mais', icon: 'view-grid-plus', route: '/(tabs)/categories' },
 ];
 
 type ProductUI = {
@@ -67,46 +78,20 @@ type ActiveAddressInfo = Address & {
     neighborhood?: string;
 };
 
-type GroupedProducts = {
-    [categoryName: string]: ProductUI[];
-};
-
-// --- COMPONENTES AUXILIARES ---
-const errorStyles = StyleSheet.create({
-    errorContainer: {
-        flex: 1, alignItems: 'center', padding: 40, backgroundColor: '#fff',
-        borderRadius: 8, margin: 15, elevation: 2,
-    },
-    errorTextTitle: { fontSize: 18, fontWeight: 'bold', marginTop: 15, color: '#d63031' },
-    errorTextSub: { fontSize: 14, color: '#666', textAlign: 'center', marginTop: 5, marginBottom: 20 },
-    retryButton: { backgroundColor: THEME_PRIMARY, marginTop: 10, width: '100%', maxWidth: 250 },
-    retryButtonText: { color: '#fff', fontWeight: 'bold' }
-});
-
-const ListErrorComponent = ({ onRetry }: { onRetry: () => void }) => (
-    <View style={errorStyles.errorContainer}>
-        <MaterialCommunityIcons name="alert-circle-outline" size={50} color="#ccc" />
-        <Text style={errorStyles.errorTextTitle}>Ops!</Text>
-        <Text style={errorStyles.errorTextSub}>Não foi possível carregar os produtos.</Text>
-        <Button mode="contained" onPress={onRetry} style={errorStyles.retryButton} labelStyle={errorStyles.retryButtonText}>
-            TENTAR NOVAMENTE
-        </Button>
-    </View>
-);
-
 export default function Home() {
     const router = useRouter();
+    const { width: screenWidth } = useWindowDimensions(); 
+    const isTablet = screenWidth > 600; 
+
     const { user, isGuest } = useAuth();
     const { cartItems } = useCart();
-    
-    // Contextos
     const { history } = useHistory(); 
     const { products, loading: productsLoading, loadProducts } = useProduct(); 
 
-    // Estados Locais
     const [activeAddressInfo, setActiveAddressInfo] = useState<ActiveAddressInfo | null>(null);
     const [addressLoading, setAddressLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
+    const [activeBanner, setActiveBanner] = useState(0);
 
     useAndroidNavigationBar(true);
 
@@ -114,15 +99,11 @@ export default function Home() {
         loadProducts();
     }, []);
 
-    // --- Lógica de Endereço ---
     const fetchActiveAddress = useCallback(async () => {
         setAddressLoading(true);
-        const timeout = setTimeout(() => setAddressLoading(false), 5000);
-
         try {
             let addresses: Address[] = [];
             let selectedId: number | null = null;
-
             const selectedIdString = await AsyncStorage.getItem(SELECTED_ADDRESS_KEY);
             selectedId = selectedIdString ? Number(selectedIdString) : null;
 
@@ -135,45 +116,28 @@ export default function Home() {
             }
 
             const foundAddress = addresses.find(addr => addr.id === selectedId);
-            
             if (foundAddress) {
-                const mappedInfo: ActiveAddressInfo = {
+                setActiveAddressInfo({
                     ...foundAddress,
-                    city: (foundAddress as any).city || 'Cidade',
-                    state: (foundAddress as any).state || 'UF',
-                    neighborhood: (foundAddress as any).neighborhood || foundAddress.additionalInfo,
-                };
-                setActiveAddressInfo(mappedInfo);
+                    neighborhood: foundAddress.additionalInfo || (foundAddress as any).neighborhood,
+                });
             } else {
                 setActiveAddressInfo(null);
             }
         } catch (e) {
-            console.error("Erro endereço Home:", e);
-            setActiveAddressInfo(null);
+            console.error(e);
         } finally {
-            clearTimeout(timeout);
             setAddressLoading(false);
         }
     }, [isGuest, user?.id]);
 
-    useFocusEffect(
-        useCallback(() => {
-            fetchActiveAddress();
-        }, [fetchActiveAddress])
-    );
+    useFocusEffect(useCallback(() => { fetchActiveAddress(); }, [fetchActiveAddress]));
 
-    // --- Agrupamento de Produtos ---
     const groupedProducts = useMemo(() => {
-        const groups: GroupedProducts = {};
-
-        if (products.length > 0) {
-            groups['Todos'] = [];
-        }
-
+        const groups: Record<string, ProductUI[]> = { 'Ofertas do dia': [] };
+        
         products.forEach((item: any) => {
-            const rawCatName = item.category?.name;
-            const catName = (rawCatName && typeof rawCatName === 'string') ? rawCatName : 'Outros'; 
-
+            const catName = item.category?.name || 'Outros';
             const productUI: ProductUI = {
                 id: item.id,
                 title: item.title,
@@ -182,47 +146,64 @@ export default function Home() {
                 stock: item.stock || 0,
                 category: catName
             };
-
-            groups['Todos'].push(productUI);
-
-            if (!groups[catName]) {
-                groups[catName] = [];
-            }
+            groups['Ofertas do dia'].push(productUI);
+            if (!groups[catName]) groups[catName] = [];
             groups[catName].push(productUI);
         });
-
         return groups;
     }, [products]);
 
-    // Ordenação das listas
-    const categoriesKeys = useMemo(() => {
-        return Object.keys(groupedProducts).sort((a, b) => {
-            if (a === 'Todos') return -1;
-            if (b === 'Todos') return 1;
-            if (a === 'Outros') return 1;
-            if (b === 'Outros') return -1;
-            return a.localeCompare(b);
-        });
-    }, [groupedProducts]);
+    const categoriesKeys = useMemo(() => Object.keys(groupedProducts), [groupedProducts]);
 
-    // --- Ações ---
     const onRefresh = useCallback(async () => {
         setRefreshing(true);
         await Promise.all([loadProducts(), fetchActiveAddress()]);
         setRefreshing(false);
     }, [loadProducts, fetchActiveAddress]);
 
-    const handleProductPress = (id: number) => {
-        router.push(`/(aux)/shop/product/${id}` as any);
-    };
 
-    const handleNav = (route: string) => {
-        if (route) router.push(route as any);
-    };
+    const renderBanner = () => {
+        const bannerHeight = isTablet ? 280 : 180;
 
-    const handleGridPress = (item: typeof CATEGORY_GRID[0]) => {
+        return (
+            <View style={styles.bannerContainer}>
+                <FlatList
+                    data={BANNER_IMAGES}
+                    horizontal
+                    pagingEnabled
+                    showsHorizontalScrollIndicator={false}
+                    onMomentumScrollEnd={(event) => {
+                        const index = Math.floor(event.nativeEvent.contentOffset.x / screenWidth);
+                        setActiveBanner(index);
+                    }}
+                    keyExtractor={(_, index) => index.toString()}
+                    renderItem={({ item }) => (
+                        <View style={{ width: screenWidth, height: bannerHeight }}>
+                            <RNImage 
+                                source={item}
+                                style={{ width: '100%', height: '100%' }} 
+                                resizeMode="cover" 
+                            />
+                        </View>
+                    )}
+                />
+                {/* Paginação */}
+                <View style={styles.paginationContainer}>
+                    {BANNER_IMAGES.map((_, i) => (
+                        <View key={i} style={[styles.dot, activeBanner === i && styles.activeDot]} />
+                    ))}
+                </View>
+                {/* Gradiente Fundo */}
+                <LinearGradient 
+                    colors={['rgba(245,245,245,0)', '#f5f5f5']} 
+                    style={styles.bannerGradient} 
+                />
+            </View>
+        );
+    };
+const handleNavigation = (item: any) => {
         if (item.route) {
-            router.push(item.route as any);
+            router.push(item.route);
         } else if (item.query) {
             router.push({
                 pathname: '/(aux)/misc/search-results',
@@ -230,116 +211,121 @@ export default function Home() {
             } as any);
         }
     };
+    
+    const renderShippingBanner = () => (
+        <View style={[styles.shippingBanner, isTablet && styles.tabletSection]}>
+            <View style={styles.shippingContent}>
+                <RNImage source={VAN_LOGO} style={styles.vanIcon} resizeMode="contain" />
+                <View style={{marginLeft: 10, flex: 1}}>
+                    <Text style={{fontSize: 12, color: '#00a650', fontWeight: 'bold'}}>Frete Grátis</Text>
+                    <Text style={{fontSize: 12, color: '#666'}}>Em milhões de produtos a partir de R$ 79</Text>
+                </View>
+                <MaterialCommunityIcons name="chevron-right" size={20} color="#ccc" />
+            </View>
+        </View>
+    );
 
-    const handleSeeAll = (categoryName: string) => {
-        if (categoryName === 'Todos') {
-            router.push('/(aux)/shop/all-products' as any);
-        } else {
-            router.push({
-                pathname: '/(aux)/misc/search-results', 
-                params: { q: categoryName } 
-            } as any);
-        }
-    };
+    const renderShortcuts = () => (
+        <View style={[styles.shortcutsContainer, { paddingHorizontal: isTablet ? 40 : 10 }]}>
+            {SHORTCUTS.map((item, index) => (
+                <TouchableOpacity 
+                    key={index} 
+                    style={styles.shortcutItem}
+                    onPress={() => item.route && router.push(item.route as any)}
+                >
+                    <View style={styles.shortcutCircle}>
+                        <MaterialCommunityIcons name={item.icon as any} size={26} color="#666" />
+                    </View>
+                    <Text style={styles.shortcutLabel}>{item.label}</Text>
+                </TouchableOpacity>
+            ))}
+        </View>
+    );
 
-    const getAddressText = useCallback(() => {
-        if (addressLoading) return 'Carregando...';
-        if (activeAddressInfo && activeAddressInfo.street) {
-            return `Enviar para ${activeAddressInfo.street}, ${activeAddressInfo.number} - ${activeAddressInfo.neighborhood || ''}`;
-        }
-        if (user && !(user as any).isGuest && user.name) {
-            return `Enviar para ${user.name.split(' ')[0]}`;
-        }
-        return 'Enviar para Visitante - Informe seu CEP';
-    }, [user, activeAddressInfo, addressLoading]);
-
-    // --- Renderização de Itens ---
-    // 🟢 CORREÇÃO APLICADA AQUI: Blindagem do preço
     const renderProductItem = ({ item }: { item: ProductUI }) => {
-        // Garante que é número. Se vier null/undefined, assume 0.
-        const safePrice = Number(item.price) || 0;
-
+        const cardWidth = isTablet ? 180 : 145;
         return (
-            <TouchableOpacity
-                style={styles.productCard}
-                onPress={() => handleProductPress(item.id)}
+            <TouchableOpacity 
+                style={[styles.productCard, { width: cardWidth }]}
+                onPress={() => router.push(`/(aux)/shop/product/${item.id}` as any)}
                 activeOpacity={0.9}
             >
                 <View style={styles.imageContainer}>
-                    {item.imageUri ? (
-                        <RNImage source={{ uri: item.imageUri }} style={styles.productImage} resizeMode="contain" />
-                    ) : (
-                        <MaterialCommunityIcons name="image-off-outline" size={40} color="#ddd" />
-                    )}
+                    <RNImage 
+                        source={item.imageUri ? { uri: item.imageUri } : require('../../src/assets/icon/icon.png')}
+                        style={styles.productImage} 
+                        resizeMode="contain" 
+                    />
                 </View>
                 <View style={styles.productInfo}>
-                    <Text style={styles.productName} numberOfLines={2}>{item.title}</Text>
-                    
-                    {/* Usa safePrice em vez de item.price */}
-                    <Text style={styles.oldPrice}>R$ {(safePrice * 1.2).toFixed(2).replace('.', ',')}</Text>
-                    
-                    <View style={styles.priceRow}>
-                        <Text style={styles.price}>R$ {safePrice.toFixed(2).replace('.', ',')}</Text>
-                        <Text style={styles.discount}>20% OFF</Text>
-                    </View>
-                    
-                    <Text style={styles.installments}>6x R$ {(safePrice / 6).toFixed(2).replace('.', ',')} sem juros</Text>
-                    
-                    {item.stock > 0 && (
-                        <Text style={styles.shipping}>Frete grátis <Text style={styles.fullText}>FULL</Text></Text>
-                    )}
+                    <Text numberOfLines={2} style={styles.productName}>{item.title}</Text>
+                    <Text style={styles.price}>R$ {item.price.toFixed(2).replace('.', ',')}</Text>
+                    <Text style={styles.installments}>em 10x sem juros</Text>
+                    <Text style={styles.shipping}>Frete grátis <Text style={{fontStyle: 'italic', color: '#00a650', fontWeight:'900'}}>⚡FULL</Text></Text>
                 </View>
             </TouchableOpacity>
         );
     };
 
-    const renderLoginCard = () => {
-        if (!user || (user as any)?.isGuest) {
-            return (
-                <View style={styles.loginCardContainer}>
-                    <Text style={styles.loginTitle}>Crie uma conta para melhorar sua experiência!</Text>
-                    <Button mode="contained" onPress={() => router.push('/(auth)/register' as any)} style={styles.btnPrimary} labelStyle={{ fontWeight: 'bold' }}>Criar conta</Button>
-                    <Button mode="text" onPress={() => router.push('/(auth)/login' as any)} style={styles.btnSecondary} labelStyle={{ color: THEME_PRIMARY, fontWeight: 'bold' }}>Entrar na minha conta</Button>
-                </View>
-            );
-        }
-        return null;
+    const getAddressText = () => {
+        if (addressLoading) return 'Carregando...';
+        if (activeAddressInfo?.street) return `${activeAddressInfo.street}, ${activeAddressInfo.number}`;
+        if (user?.name) return `Enviar para ${user.name.split(' ')[0]}`;
+        return 'Informe seu CEP';
     };
 
-    const isGlobalLoading = (productsLoading || addressLoading) && !refreshing;
-
-    const renderMainContent = () => {
-        if (isGlobalLoading) {
-            return <ActivityIndicator size="large" color={THEME_PRIMARY} style={{ marginTop: 20 }} />;
+    const handleSeeAll = (categoryName: string) => {
+        if (categoryName === 'Ofertas do dia') {
+            router.push('/(aux)/shop/all-products' as any);
+        } else {
+            router.push({
+                pathname: '/(aux)/misc/search-results',
+                params: { q: categoryName }
+            } as any);
         }
+    };
 
-        if (Object.keys(groupedProducts).length === 0 && !productsLoading) {
-             return <ListErrorComponent onRetry={loadProducts} />;
-        }
-
-        return (
-            <>
-                {/* 1. ATALHOS REDONDOS */}
-                <View style={styles.shortcutsContainer}>
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-                        {SHORTCUTS.map((item, index) => (
-                            <TouchableOpacity 
-                                key={index} 
-                                style={styles.shortcutItem}
-                                onPress={() => item.route && handleNav(item.route)}
-                            >
-                                <View style={styles.shortcutCircle}>
-                                    <MaterialCommunityIcons name={item.icon as any} size={28} color="#666" />
-                                </View>
-                                <Text style={styles.shortcutLabel} numberOfLines={2}>{item.label}</Text>
-                            </TouchableOpacity>
-                        ))}
-                    </ScrollView>
+    return (
+        <View style={styles.container}>
+            <StatusBar barStyle="dark-content" backgroundColor={ML_YELLOW}   />
+            <SafeAreaView 
+                edges={['top']} 
+                style={{ backgroundColor: ML_YELLOW, zIndex: 100 }}
+            >
+            <View style={[styles.headerContainer, { paddingTop: Platform.OS === 'ios' ? 50 : 0 }]}>
+                <View style={[styles.headerContent, { maxWidth: isTablet ? 700 : '100%', alignSelf: 'center', width: '90%' }]}>
+                    <View style={styles.topRow}>
+                        <TouchableOpacity style={styles.searchBar} onPress={() => router.push('/(aux)/misc/search/' as any)}>
+                            <Ionicons name="search" size={20} color="#999" style={{ marginLeft: 20 }} />
+                            <Text style={styles.searchText}>Buscar no Mercado Souto</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity onPress={() => router.push('/(aux)/shop/cart' as any)}>
+                            <MaterialCommunityIcons name="cart-outline" size={28} color="#333" style={{marginLeft: 20}} />
+                            {cartItems.length > 0 && <Badge size={16} style={styles.cartBadge}>{cartItems.length}</Badge>}
+                        </TouchableOpacity>
+                    </View>
+                    
+                    <TouchableOpacity style={styles.addressRow} onPress={() => router.push('/(aux)/account/address' as any)}>
+                        <Ionicons name="location-outline" size={18} color="#333" />
+                        <Text style={styles.addressText} numberOfLines={1}>{getAddressText()}</Text>
+                        <Ionicons name="chevron-forward" size={18} color="#777" />
+                    </TouchableOpacity>
                 </View>
+            </View>
+            </SafeAreaView>
+            <ScrollView 
+                showsVerticalScrollIndicator={false}
+                refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[THEME_PRIMARY]} />}
+                contentContainerStyle={{ paddingBottom: 40 }}
+            >
 
-                {/* 2. VISTO RECENTEMENTE */}
+                {renderBanner()}
+                {renderShortcuts()}
+                {renderShippingBanner()}
+
+                {/* 4. HISTÓRICO */}
                 {history && history.length > 0 && (
-                    <View style={styles.categorySection}>
+                     <View style={[styles.sectionContainer, isTablet && styles.tabletSection]}>
                         <View style={styles.sectionHeader}>
                             <Text style={styles.sectionTitle}>Visto recentemente</Text>
                             <TouchableOpacity onPress={() => router.push('/(aux)/shop/history' as any)}>
@@ -349,112 +335,78 @@ export default function Home() {
                         <FlatList
                             data={history}
                             horizontal
-                            renderItem={({ item }) => {
-                                const histItem: ProductUI = {
-                                    id: item.id,
-                                    title: item.title,
-                                    // 🟢 CORREÇÃO: Garante que price seja número no histórico também
-                                    price: Number(item.price) || 0,
-                                    imageUri: item.image,
-                                    stock: 1, 
-                                    category: 'Histórico'
-                                };
-                                return renderProductItem({ item: histItem });
-                            }}
-                            keyExtractor={(item, index) => String(item.id + '_' + index)}
                             showsHorizontalScrollIndicator={false}
-                            contentContainerStyle={styles.productsList}
+                            keyExtractor={(item, index) => `hist-${item.id}-${index}`}
+                            renderItem={({item}) => renderProductItem({ item: { ...item, price: Number(item.price) || 0, imageUri: item.image, stock: 1, category: 'Hist'} })}
+                            contentContainerStyle={{ paddingHorizontal: 15 }}
                         />
-                    </View>
+                     </View>
                 )}
 
-                {/* 3. LISTAS DE PRODUTOS */}
-                {categoriesKeys.map((categoryName) => (
-                    <View key={categoryName} style={styles.categorySection}>
+                {/* 5. LISTAS DE PRODUTOS */}
+                {categoriesKeys.map((cat) => (
+                    <View key={cat} style={[styles.sectionContainer, isTablet && styles.tabletSection]}>
                         <View style={styles.sectionHeader}>
-                            <Text style={styles.sectionTitle}>{categoryName}</Text>
-                            <TouchableOpacity onPress={() => handleSeeAll(categoryName)}>
+                            <Text style={styles.sectionTitle}>{cat}</Text>
+                            <TouchableOpacity onPress={() => handleSeeAll(cat)}>
                                 <Text style={styles.seeAll}>Ver tudo</Text>
-                                <MaterialCommunityIcons name="arrow-right" size={16} color={THEME_PRIMARY} />
                             </TouchableOpacity>
                         </View>
                         <FlatList
-                            data={groupedProducts[categoryName]}
+                            data={groupedProducts[cat]}
                             horizontal
-                            renderItem={renderProductItem}
-                            keyExtractor={item => String(item.id)}
                             showsHorizontalScrollIndicator={false}
-                            contentContainerStyle={styles.productsList}
+                            keyExtractor={(item) => String(item.id)}
+                            renderItem={renderProductItem}
+                            contentContainerStyle={{ paddingHorizontal: 15 }}
                         />
                     </View>
                 ))}
 
-                {/* 4. GRADE DE CATEGORIAS (FIM DA TELA) */}
-                <View style={styles.gridSection}>
-                    <Text style={[styles.sectionTitle, { marginLeft: 15, marginBottom: 10 }]}>Categorias</Text>
+                {/* 6. GRID CATEGORIAS */}
+                <View style={[styles.gridSection, isTablet && styles.tabletSection]}>
+                    <Text style={[styles.sectionTitle, { marginLeft: 15, marginBottom: 15 }]}>Categorias populares</Text>
                     <View style={styles.gridContainer}>
-                        {CATEGORY_GRID.map((item, index) => (
-                            <TouchableOpacity key={index} style={styles.gridItem} onPress={() => handleGridPress(item)}>
-                                <View style={styles.gridIconCircle}>
-                                    <MaterialCommunityIcons name={item.icon as any} size={28} color={item.label === 'Ver mais' ? THEME_PRIMARY : '#666'} />
-                                </View>
-                                <Text style={styles.gridLabel} numberOfLines={2}>{item.label}</Text>
-                            </TouchableOpacity>
-                        ))}
+                        {CATEGORY_GRID.map((item, index) => {
+                            const itemWidth = isTablet ? '30%' : '47%'; 
+                            return (
+                                <TouchableOpacity 
+                                    key={index} 
+                                    style={[styles.gridItem, { width: itemWidth }]} 
+                                    onPress={() => handleNavigation(item)}
+                                >
+                                    <MaterialCommunityIcons name={item.icon as any} size={28} color={THEME_PRIMARY} />
+                                    <Text style={styles.gridLabel}>{item.label}</Text>
+                                </TouchableOpacity>
+                            )
+                        })}
                     </View>
                 </View>
-
-                {renderLoginCard()}
-                <View style={{ height: 30 }} />
-            </>
-        );
-    };
-    
-    return (
-        <View style={styles.container}>
-            <StatusBar barStyle="dark-content" backgroundColor={ML_YELLOW} />
-
-            <View style={styles.headerContainer}>
-                <View style={styles.headerContent}>
-                    {/* Top Row */}
-                    <View style={styles.topRow}>
-                        <TouchableOpacity style={styles.searchBar} onPress={() => router.push('/(aux)/misc/search' as any)} activeOpacity={0.9}>
-                            <MaterialCommunityIcons name="magnify" size={22} color="#999" style={{ marginLeft: 10 }} />
-                            <Text style={styles.searchText}>Buscar no Mercado Souto</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity style={styles.cartButton} onPress={() => router.push('/(aux)/shop/cart' as any)}>
-                            <MaterialCommunityIcons name="cart-outline" size={28} color="#333" />
-                            {cartItems.length > 0 && <Badge size={16} style={styles.cartBadge}>{cartItems.length}</Badge>}
-                        </TouchableOpacity>
-                    </View>
-                    {/* Endereço */}
-                    <TouchableOpacity style={styles.addressRow} onPress={() => router.push('/(aux)/account/address' as any)}>
-                        <MaterialCommunityIcons name="map-marker-outline" size={18} color="#333" />
-                        <Text style={styles.addressText} numberOfLines={1}>{getAddressText()}</Text>
-                        <MaterialCommunityIcons name="chevron-right" size={16} color="#777" />
-                    </TouchableOpacity>
-                </View>
-            </View>
-
-            <ScrollView
-                showsVerticalScrollIndicator={false}
-                contentContainerStyle={styles.scrollContent}
-                keyboardShouldPersistTaps="handled" 
-                refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[ML_YELLOW]} />}
-            >
-                {/* Banner de Ofertas */}
-                <View style={styles.bannerContainer}>
-                    <TouchableOpacity style={styles.banner} onPress={() => router.push('/(aux)/shop/all-products' as any)} activeOpacity={0.9}>
-                        <View>
-                            <Text style={styles.bannerTitle}>OFERTAS</Text>
-                            <Text style={styles.bannerSubtitle}>IMPERDÍVEIS</Text>
-                            <View style={styles.bannerButton}><Text style={styles.bannerButtonText}>Ver mais</Text></View>
+                
+                {/* 7. LOGIN CARD */}
+                {(!user || isGuest) && (
+                     <View style={[styles.loginCardContainer, isTablet && styles.tabletSection]}>
+                        <View style={styles.loginCard}>
+                            <MaterialCommunityIcons name="account-circle-outline" size={40} color="#333" style={{marginBottom: 10}}/>
+                            <Text style={styles.loginTitle}>Acesse sua conta para ver suas compras, favoritos e muito mais.</Text>
+                            <Button 
+                                mode="contained" 
+                                onPress={() => router.push('/(auth)/login' as any)} 
+                                buttonColor={THEME_PRIMARY}
+                                style={styles.loginBtn}
+                            >
+                                Entrar na minha conta
+                            </Button>
+                            <Button 
+                                mode="text" 
+                                onPress={() => router.push('/(auth)/register' as any)} 
+                                textColor={THEME_PRIMARY}
+                            >
+                                Criar conta
+                            </Button>
                         </View>
-                        <MaterialCommunityIcons name="truck-delivery" size={80} color="#2d3277" style={{ marginRight: 10 }} />
-                    </TouchableOpacity>
-                </View>
-
-                {renderMainContent()}
+                     </View>
+                )}
 
             </ScrollView>
         </View>
@@ -462,81 +414,76 @@ export default function Home() {
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#f5f5f5' },
+    container: { flex: 1, backgroundColor: BG_GRAY },
     
-    // Header
-    headerContainer: { backgroundColor: ML_YELLOW, paddingTop: Platform.OS === 'android' ? 0 : 50, elevation: 4, zIndex: 10 },
-    headerContent: { paddingHorizontal: 15, paddingBottom: 12 },
-    topRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 10 },
-    searchBar: { flex: 1, flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', height: 38, borderRadius: 30, marginRight: 12, elevation: 2, paddingHorizontal: 10 },
-    searchText: { marginLeft: 8, color: '#bbb', fontSize: 14 },
-    cartButton: { padding: 5 },
-    cartBadge: { position: 'absolute', top: -2, right: -2, backgroundColor: '#d63031', fontSize: 10, fontWeight: 'bold' },
-    addressRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 5 },
-    addressText: { flex: 1, fontSize: 13, marginLeft: 6, marginRight: 5 },
+    headerContainer: { backgroundColor: ML_YELLOW, elevation: 2, zIndex: 10 },
+    headerContent: { padding: 10, paddingBottom: 10 },
+    topRow: { flexDirection: 'row', alignItems: 'center' },
+    searchBar: { 
+        flex: 1, flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', 
+        height: 40, borderRadius: 30, elevation: 2, 
+        shadowColor: '#000', shadowOpacity: 0.1, shadowOffset: { width:0, height:1 }
+    },
+    searchText: { color: '#bbb', marginLeft: 8 },
+    cartBadge: { position: 'absolute', top: -4, right: -4, backgroundColor: '#d63031', fontSize: 10 },
+    addressRow: { flexDirection: 'row', alignItems: 'center', marginTop: 10, paddingLeft: 4 },
+    addressText: { fontSize: 13, color: '#333', marginLeft: 5, flex: 1 },
 
-    scrollContent: { paddingBottom: 100 },
-    
-    // Banner
-    bannerContainer: { padding: 15 },
-    banner: { backgroundColor: THEME_PRIMARY, height: 150, borderRadius: 8, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, justifyContent: 'space-between', elevation: 4 },
-    bannerTitle: { color: '#FFE600', fontSize: 22, fontWeight: '900', fontStyle: 'italic' },
-    bannerSubtitle: { color: '#FFF', fontSize: 20, fontWeight: 'bold', marginBottom: 12 },
-    bannerButton: { backgroundColor: '#fff', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20 },
-    bannerButtonText: { color: THEME_PRIMARY, fontWeight: 'bold', fontSize: 12 },
+    bannerContainer: { position: 'relative' },
+    paginationContainer: { flexDirection: 'row', position: 'absolute', bottom: 15, alignSelf: 'center' },
+    dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: 'rgba(255,255,255,0.5)', margin: 3 },
+    activeDot: { backgroundColor: '#fff' },
+    bannerGradient: { position: 'absolute', bottom: 0, left: 0, right: 0, height: 20 },
 
-    // Atalhos
-    shortcutsContainer: { height: 95 },
-    shortcutItem: { alignItems: 'center', marginRight: 15, width: 72 },
-    shortcutCircle: { width: 58, height: 58, backgroundColor: '#fff', borderRadius: 29, justifyContent: 'center', alignItems: 'center', marginBottom: 6, elevation: 2, borderWidth: 1, borderColor: '#f0f0f0' },
+    shortcutsContainer: { 
+        flexDirection: 'row', justifyContent: 'space-between', backgroundColor: '#fff', 
+        paddingVertical: 20, marginTop: -10, borderTopLeftRadius: 20, borderTopRightRadius: 20,
+        elevation: 1, zIndex: 2
+    },
+    shortcutItem: { alignItems: 'center', flex: 1 },
+    shortcutCircle: { 
+        width: 55, height: 55, borderRadius: 30, backgroundColor: '#fff', 
+        borderWidth: 1, borderColor: '#eee', justifyContent: 'center', alignItems: 'center', marginBottom: 5,
+        elevation: 2 
+    },
     shortcutLabel: { fontSize: 11, color: '#666', textAlign: 'center' },
 
-    // Seções de Produtos
-    categorySection: { marginTop: 15, marginBottom: 5 },
+    shippingBanner: { paddingHorizontal: 15, marginTop: 15, marginBottom: 5 },
+    shippingContent: { 
+        backgroundColor: '#fff', padding: 10, borderRadius: 6, flexDirection: 'row', alignItems: 'center',
+        elevation: 1, shadowColor: '#000', shadowOpacity: 0.05
+    },
+    vanIcon: { width: 50, height: 50 },
+
+    sectionContainer: { marginTop: 20 },
+    tabletSection: { maxWidth: 900, alignSelf: 'center', width: '100%' }, 
     sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 15, marginBottom: 10, alignItems: 'center' },
-    sectionTitle: { fontSize: 18, fontWeight: '700', color: '#333' },
-    seeAll: { color: THEME_PRIMARY, fontSize: 14, marginRight: 4 },
-    productsList: { paddingHorizontal: 10 },
-    
-    // Grade de Categorias
-    gridSection: { marginTop: 25 },
-    gridContainer: { 
-        flexDirection: 'row', 
-        flexWrap: 'wrap', 
-        backgroundColor: '#f5f5f5', 
-        justifyContent: 'space-between', 
-        paddingHorizontal: 10 
-    },
-    gridItem: { 
-        width: '31%', 
-        aspectRatio: 1, 
-        alignItems: 'center', 
-        justifyContent: 'center',
-        marginBottom: 10,
-        backgroundColor: '#fff', 
-        borderRadius: 8,
-        elevation: 2, 
-        padding: 5
-    },
-    gridIconCircle: { marginBottom: 5 },
-    gridLabel: { fontSize: 12, color: '#666', textAlign: 'center', fontWeight: '500' },
+    sectionTitle: { fontSize: 18, color: '#333', fontWeight: '600' },
+    seeAll: { color: THEME_PRIMARY, fontSize: 14 },
 
-    // Card de Produto
-    productCard: { backgroundColor: '#fff', width: 160, height: 310, marginHorizontal: 6, borderRadius: 8, elevation: 3, overflow: 'hidden' },
-    imageContainer: { height: 160, justifyContent: 'center', alignItems: 'center', borderBottomWidth: 1, borderBottomColor: '#f5f5f5', padding: 10 },
+    productCard: { 
+        backgroundColor: '#fff', borderRadius: 6, marginHorizontal: 8, 
+        elevation: 3, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 3, shadowOffset: {width:0,height:1},
+        paddingBottom: 10, marginBottom: 5, height: 290
+    },
+    imageContainer: { height: 140, justifyContent: 'center', alignItems: 'center', padding: 10, borderBottomWidth:1, borderBottomColor:'#f5f5f5' },
     productImage: { width: '100%', height: '100%' },
-    productInfo: { padding: 12, flex: 1 },
-    productName: { fontSize: 13, marginBottom: 6, height: 32 },
-    oldPrice: { fontSize: 11, color: '#aaa', textDecorationLine: 'line-through' },
-    priceRow: { flexDirection: 'row', alignItems: 'center' },
-    price: { fontSize: 20, fontWeight: '500', marginRight: 8 },
-    discount: { fontSize: 12, color: '#00a650', fontWeight: 'bold' },
-    installments: { fontSize: 11 },
-    shipping: { fontSize: 11, color: '#00a650', marginTop: 4, fontWeight: '700' },
-    fullText: { fontWeight: 'bold', fontStyle: 'italic' },
+    productInfo: { padding: 10, flex: 1, justifyContent: 'space-between' },
+    productName: { fontSize: 14, color: '#333', marginBottom: 4, height: 38 },
+    price: { fontSize: 20, color: '#333', fontWeight: '500' },
+    installments: { fontSize: 12, color: GREEN_FREE },
+    shipping: { fontSize: 12, color: GREEN_FREE, fontWeight: 'bold' },
 
-    loginCardContainer: { backgroundColor: '#fff', margin: 10, padding: 15, borderRadius: 8, elevation: 2, marginTop: 30 },
-    loginTitle: { fontSize: 14, fontWeight: 'bold', textAlign: 'center', marginBottom: 15 },
-    btnPrimary: { backgroundColor: THEME_PRIMARY, marginBottom: 10, borderRadius: 6 },
-    btnSecondary: { borderRadius: 6 },
-});
+    gridSection: { marginTop: 20, marginBottom: 30 },
+    gridContainer: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 10, justifyContent: 'space-between' },
+    gridItem: { 
+        backgroundColor: '#fff', borderRadius: 8, padding: 15, marginBottom: 10, 
+        alignItems: 'center', flexDirection: 'row', elevation: 2 
+    },
+    gridLabel: { marginLeft: 20, fontSize: 13, color: '#333', flex: 1 },
+
+    loginCardContainer: { paddingHorizontal: 10, marginBottom: 10 },
+    loginCard: { backgroundColor: '#fff', padding: 100, borderRadius: 20, elevation: 1, alignItems: 'center',height: '100%' },
+    loginTitle: { textAlign: 'center', marginBottom: 10, color: '#333', fontSize: 15 },
+    loginBtn: { width: '100%', marginBottom: 2 },
+}); 

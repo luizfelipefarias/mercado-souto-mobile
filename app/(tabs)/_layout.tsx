@@ -1,37 +1,41 @@
 import { Tabs } from 'expo-router';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { Platform, View, StyleSheet } from 'react-native';
+import { Platform, StyleSheet } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { theme } from '../../src/constants/theme';
 
 export default function TabLayout() {
+  const insets = useSafeAreaInsets();
+
   return (
     <Tabs
       screenOptions={{
         headerShown: false,
         tabBarHideOnKeyboard: true,
         tabBarActiveTintColor: theme.colors.primary,
-        tabBarInactiveTintColor: '#666',
+        tabBarInactiveTintColor: '#999',
         
         tabBarStyle: {
           backgroundColor: '#FFFFFF',
-          borderTopWidth: 1,
-          borderTopColor: '#e0e0e0',
-          height: Platform.OS === 'android' ? 65 : 90,
-          paddingBottom: Platform.OS === 'android' ? 10 : 30,
-          paddingTop: 8,
-          overflow: 'visible', 
-          position: 'absolute', 
-          elevation: 0, 
+          borderTopWidth: 0,
+          
+          height: 100 + insets.bottom , 
+          
+          paddingBottom: insets.bottom > 0 ? insets.bottom : 10,
+          
+          paddingTop: 0.1,
+          
+          elevation: 10,
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: -2 },
+          shadowOpacity: 0.08,
+          shadowRadius: 5,
         },
         
         tabBarLabelStyle: {
-          fontSize: 12, 
-          fontWeight: '600',
-          marginBottom: 0,
-        },
-        
-        tabBarIconStyle: { 
-            marginTop: 2 
+          fontSize: 15, 
+          fontWeight: '300',
+          marginTop: 2,
         },
       }}
     >
@@ -41,13 +45,13 @@ export default function TabLayout() {
         name="index" 
         options={{
           title: 'Início',
-          tabBarIcon: ({ color }) => (
-            <MaterialCommunityIcons name="home-outline" size={30} color={color} />
+          tabBarIcon: ({ color, focused }) => (
+            <MaterialCommunityIcons 
+              name={focused ? "home" : "home-outline"} 
+              size={30} 
+              color={color} 
+            />
           ),
-          tabBarLabelStyle: { 
-            fontSize: 12, 
-            fontWeight: 'bold',
-          }
         }}
       />
 
@@ -56,13 +60,13 @@ export default function TabLayout() {
         name="categories"
         options={{
           title: 'Categorias',
-          tabBarIcon: ({ color }) => (
-            <MaterialCommunityIcons name="format-list-bulleted" size={30} color={color} />
+          tabBarIcon: ({ color, focused }) => (
+            <MaterialCommunityIcons 
+              name={focused ? "view-grid" : "view-grid-outline"} 
+              size={30} 
+              color={color} 
+            />
           ),
-          tabBarLabelStyle: { 
-            fontSize: 12, 
-            fontWeight: 'bold', 
-          }
         }}
       />
 
@@ -71,36 +75,31 @@ export default function TabLayout() {
         name="favorites"
         options={{
           title: 'Favoritos',
-          tabBarIcon: ({ color }) => (
-            <MaterialCommunityIcons name="heart-outline" size={30} color={color} />
+          tabBarIcon: ({ color, focused }) => (
+            <MaterialCommunityIcons 
+              name={focused ? "heart" : "heart-outline"} 
+              size={30} 
+              color={color} 
+            />
           ),
-          tabBarLabelStyle: { 
-            fontSize: 12, 
-            fontWeight: 'bold', 
-          }
         }}
       />
-
 
       {/* 4. MAIS */}
       <Tabs.Screen
         name="menu"
         options={{
           title: 'Mais',
-          tabBarIcon: ({ color }) => (
-            <MaterialCommunityIcons name="menu" size={30} color={color} />
+          tabBarIcon: ({ color, focused }) => (
+            <MaterialCommunityIcons 
+              name={focused ? "menu" : "menu"} 
+              size={30} 
+              color={color} 
+            />
           ),
-          tabBarLabelStyle: { 
-            fontSize: 12, 
-            fontWeight: 'bold', 
-          }
         }}
       />
-
 
     </Tabs>
   );
 }
-
-const styles = StyleSheet.create({
-});
