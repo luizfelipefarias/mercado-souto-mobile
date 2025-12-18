@@ -28,6 +28,7 @@ export default function Login() {
   const [expanded, setExpanded] = useState(false);
   const [secureText, setSecureText] = useState(true);
 
+  // Estados de Erro
   const [identifierError, setIdentifierError] = useState('');
   const [passwordError, setPasswordError] = useState('');
 
@@ -43,13 +44,21 @@ export default function Login() {
     return text;
   }
 
-  function handleIdentifier(text: string) {
-    setIdentifierError('');
+  function handleIdentifierChange(text: string) {
+    // Limpa o erro ao digitar
+    if (identifierError) setIdentifierError('');
+    
     if (/^\d/.test(text) || text.includes('(')) {
       setIdentifier(formatPhone(text));
     } else {
       setIdentifier(text.trim());
     }
+  }
+
+  function handlePasswordChange(text: string) {
+    // Limpa o erro ao digitar
+    if (passwordError) setPasswordError('');
+    setPassword(text);
   }
 
   function isValidIdentifier() {
@@ -59,16 +68,17 @@ export default function Login() {
   }
 
   function handleContinue() {
-    if (!isValidIdentifier()) {
-      setIdentifierError('Digite um e-mail válido.');
+    if (!identifier.trim()) {
+      setIdentifierError('Campo obrigatório.');
       return;
     }
-    setExpanded(true);
-  }
 
-  function handlePassword(text: string) {
-    setPassword(text);
-    if (passwordError) setPasswordError('');
+    if (!isValidIdentifier()) {
+      setIdentifierError('Digite um e-mail válido ou telefone com DDD.');
+      return;
+    }
+    
+    setExpanded(true);
   }
 
   function handleEditIdentifier() {
@@ -78,8 +88,9 @@ export default function Login() {
   }
 
   async function handleLogin() {
+    // 1. Validação local antes de chamar API
     if (!password.trim()) {
-      setPasswordError('Digite sua senha.');
+      setPasswordError('Por favor, digite sua senha.');
       return;
     }
 
@@ -88,8 +99,10 @@ export default function Login() {
         ? identifier.trim()
         : identifier.replace(/\D/g, '');
 
+      // 2. Chama o AuthContext (que deve lançar erro se falhar)
       const response: any = await signIn(cleanIdentifier, password);
 
+      // 3. Se chegou aqui, é SUCESSO. Salva e navega.
       await AsyncStorage.setItem('@user_email', cleanIdentifier);
 
       if (response && response.token) {
@@ -99,28 +112,33 @@ export default function Login() {
       if (router.canDismiss()) router.dismissAll();
 
       setTimeout(() => {
-        // CORREÇÃO: Redireciona para /(tabs) (o index), e não mais /(tabs)/home
         router.replace('/(tabs)');
       }, 100);
 
     } catch (error: any) {
-      console.error(error);
+      console.error("Erro login UI:", error);
+      
+      const status = error?.response?.status;
 
-      if (error?.response?.status === 401 || error?.response?.status === 403) {
-        setPasswordError('Credenciais incorretas.');
+      // 4. TRATAMENTO DE ERROS (Mantém na tela)
+      // Erros 400, 401, 403, 404 geralmente indicam dados errados
+      if (status === 400 || status === 401 || status === 403 || status === 404) {
+        setPasswordError('E-mail ou senha incorretos.');
+        
         Toast.show({
           type: 'error',
-          text1: 'Acesso negado',
-          text2: 'E-mail ou senha inválidos.'
+          text1: 'Dados incorretos',
+          text2: 'Verifique seu e-mail/senha e tente novamente.'
         });
-        return;
+      } else {
+        // Outros erros (500, Sem internet, etc)
+        Toast.show({
+          type: 'error',
+          text1: 'Erro de conexão',
+          text2: 'Não foi possível conectar ao servidor.'
+        });
       }
-
-      Toast.show({
-        type: 'error',
-        text1: 'Erro de conexão',
-        text2: 'Não foi possível conectar ao servidor.'
-      });
+      // O código termina aqui, o usuário PERMANECE na tela de login
     }
   }
 
@@ -148,13 +166,14 @@ export default function Login() {
                 : 'Digite seu e-mail ou telefone'}
             </Text>
 
+            {/* INPUT DE IDENTIFICAÇÃO */}
             <TextInput
               label="E-mail ou telefone"
               value={identifier}
-              onChangeText={handleIdentifier}
+              onChangeText={handleIdentifierChange}
               style={styles.input}
               mode="outlined"
-              error={!!identifierError}
+              error={!!identifierError} 
               outlineColor={expanded ? '#ddd' : theme.colors.primary}
               activeOutlineColor={theme.colors.primary}
               editable={!expanded}
@@ -168,26 +187,28 @@ export default function Login() {
                   <TextInput.Icon
                     icon="pencil"
                     onPress={handleEditIdentifier}
+                    color={theme.colors.primary}
                   />
                 )
               }
             />
-
+            {/* Helper Text para Identifier */}
             <HelperText type="error" visible={!!identifierError}>
               {identifierError}
             </HelperText>
 
             {expanded && (
               <>
+                {/* INPUT DE SENHA */}
                 <TextInput
                   label="Senha"
                   value={password}
-                  onChangeText={handlePassword}
+                  onChangeText={handlePasswordChange}
                   secureTextEntry={secureText}
                   style={styles.input}
                   mode="outlined"
-                  error={!!passwordError}
-                  outlineColor={theme.colors.primary}
+                  error={!!passwordError} 
+                  outlineColor="#ddd"
                   activeOutlineColor={theme.colors.primary}
                   autoFocus
                   onSubmitEditing={handleLogin}
@@ -198,7 +219,7 @@ export default function Login() {
                     />
                   }
                 />
-
+                {/* Helper Text para Senha */}
                 <HelperText type="error" visible={!!passwordError}>
                   {passwordError}
                 </HelperText>
@@ -285,13 +306,13 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: 'bold',
     color: '#333',
-    marginBottom: 25,
+    marginBottom: 20,
     marginTop: 10,
   },
   input: {
     backgroundColor: '#fff',
     fontSize: 16,
-    marginBottom: 6,
+    marginBottom: 2, 
   },
   mainBtn: {
     borderRadius: 6,

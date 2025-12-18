@@ -8,9 +8,8 @@ import {
   StatusBar,
   ActivityIndicator,
   RefreshControl,
-  Platform,
-  Alert,
-  BackHandler
+  BackHandler,
+  Alert
 } from 'react-native';
 import { Text, Button, Divider } from 'react-native-paper';
 import { useRouter } from 'expo-router';
@@ -49,7 +48,6 @@ export default function MyPurchasesScreen() {
   const [loadingOrder, setLoadingOrder] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  // --- NAVEGAÇÃO ---
   const handleBack = useCallback(() => {
       if (router.canGoBack()) {
           router.back();
@@ -71,7 +69,6 @@ export default function MyPurchasesScreen() {
   const goToOrderDetails = (orderId: number) => {
       router.push(`/(aux)/account/order/${orderId}` as any);
   };
-  // ----------------
 
   const fetchMyOrders = useCallback(async () => {
     if (!user || !user.id || !token) {
@@ -126,7 +123,7 @@ export default function MyPurchasesScreen() {
   const activeOrder = useMemo(() => {
       if (!orders) return null;
       return orders.find(o => 
-          ['APPROVED', 'PENDING', 'PREPARING', 'SHIPPED'].includes(o.status)
+          ['APPROVED', 'PENDING', 'WAITING_PAYMENT', 'PREPARING', 'SHIPPED'].includes(o.status)
       );
   }, [orders]);
 
@@ -172,8 +169,9 @@ export default function MyPurchasesScreen() {
 
   const getStatusInfo = (status: string) => {
     const map: Record<string, { label: string, color: string, icon: string }> = {
-      APPROVED: { label: 'Aprovado', color: '#00a650', icon: 'check-circle' }, 
-      PENDING: { label: 'Pendente', color: '#ff9900', icon: 'clock-outline' }, 
+      APPROVED: { label: 'Pagamento Aprovado', color: '#00a650', icon: 'check-circle' }, 
+      PENDING: { label: 'Processando pagamento', color: '#bf8e17', icon: 'credit-card-clock-outline' }, 
+      WAITING_PAYMENT: { label: 'Aguardando pagamento', color: '#bf8e17', icon: 'credit-card-clock-outline' }, 
       PREPARING: { label: 'Em preparação', color: '#3483fa', icon: 'package-variant' }, 
       SHIPPED: { label: 'Enviado', color: '#3483fa', icon: 'truck-fast' },
       DELIVERED: { label: 'Entregue', color: '#00a650', icon: 'check-all' },
@@ -222,7 +220,6 @@ export default function MyPurchasesScreen() {
 
     return (
       <View style={styles.card}>
-        {/* Cabeçalho do Card: Data e Link para Detalhes do Pedido */}
         <TouchableOpacity 
             style={styles.cardHeader} 
             onPress={() => goToOrderDetails(item.id)}
@@ -237,7 +234,6 @@ export default function MyPurchasesScreen() {
         <Divider />
 
         <View style={styles.cardBody}>
-            {/* Imagem clicável leva ao Produto */}
             <TouchableOpacity onPress={() => goToProduct(firstItem.product.id)}>
                 {imageUri ? (
                     <Image source={{ uri: imageUri }} style={styles.productImage} resizeMode="contain" />
@@ -249,7 +245,6 @@ export default function MyPurchasesScreen() {
             </TouchableOpacity>
 
             <View style={styles.infoColumn}>
-                {/* Status em destaque */}
                 <View style={styles.statusRow}>
                     <MaterialCommunityIcons name={statusInfo.icon as any} size={16} color={statusInfo.color} />
                     <Text style={[styles.statusText, { color: statusInfo.color }]}>
@@ -257,7 +252,6 @@ export default function MyPurchasesScreen() {
                     </Text>
                 </View>
 
-                {/* Título */}
                 <Text style={styles.productTitle} numberOfLines={2}>
                     {firstItem.product.title}
                     {hasMoreItems && <Text style={styles.moreText}> + {item.orderItems.length - 1} itens</Text>}
@@ -270,7 +264,6 @@ export default function MyPurchasesScreen() {
         </View>
 
         <View style={styles.cardFooter}>
-            {/* Botão para ver o produto novamente */}
             <TouchableOpacity 
                 style={styles.buyAgainButton}
                 onPress={() => goToProduct(firstItem.product.id)}
@@ -287,14 +280,10 @@ export default function MyPurchasesScreen() {
       <StatusBar barStyle="dark-content" backgroundColor={theme.colors.secondary} />
       <SafeAreaView style={styles.header} edges={['top']}>
         <View style={styles.headerContent}>
-          {/* Botão de Voltar */}
           <TouchableOpacity onPress={handleBack} style={{ padding: 5 }}>
             <MaterialCommunityIcons name="arrow-left" size={24} color="#333" />
           </TouchableOpacity>
-          
           <Text style={styles.headerTitle}>Minhas Compras</Text>
-          
-          {/* View Vazia para manter o título centralizado */}
           <View style={{ width: 34 }} />
         </View>
       </SafeAreaView>
@@ -347,7 +336,6 @@ const styles = StyleSheet.create({
   trackSubtitle: { fontSize: 13, color: '#666', marginTop: 2 },
   sectionHeader: { fontSize: 18, fontWeight: 'bold', marginBottom: 10, color: '#333' },
   
-  // CARD STYLES
   card: { backgroundColor: '#fff', borderRadius: 8, marginBottom: 15, elevation: 2, overflow: 'hidden' },
   cardHeader: { flexDirection: 'row', justifyContent: 'space-between', padding: 12, backgroundColor: '#fafafa' },
   dateText: { fontWeight: 'bold', fontSize: 14, color: '#333', textTransform: 'capitalize' },
@@ -368,7 +356,6 @@ const styles = StyleSheet.create({
   buyAgainButton: { backgroundColor: '#e3edfb', paddingVertical: 10, borderRadius: 6, alignItems: 'center' },
   buyAgainText: { color: theme.colors.primary, fontWeight: 'bold', fontSize: 14 },
 
-  // GUEST & EMPTY STATES
   guestContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 30 },
   guestTitle: { fontSize: 20, fontWeight: 'bold', color: '#333', marginTop: 20, marginBottom: 10, textAlign: 'center' },
   loginButton: { width: '100%', backgroundColor: theme.colors.primary, marginTop: 10 },

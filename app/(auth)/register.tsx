@@ -7,18 +7,28 @@ import {
   ScrollView,
   Image,
   KeyboardAvoidingView,
-  Alert
+  Modal
 } from 'react-native';
 
-import { Button, Text, TextInput, HelperText } from 'react-native-paper';
+import { Button, Text, TextInput, HelperText, Checkbox } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as NavigationBar from 'expo-navigation-bar';
 import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import Toast from 'react-native-toast-message';
 
 import GoogleLogo from '../../src/assets/img/ui/logo-google.svg';
 import { theme } from '../../src/constants/theme';
 import { useAuth } from '../../src/context/AuthContext';
+
+const GENERIC_TERMS = `
+TERMOS DE USO E POLÍTICA DE PRIVACIDADE
+
+1. ACEITAÇÃO DOS TERMOS
+Ao criar uma conta no Mercado Souto, você concorda com os presentes termos...
+(Seu texto dos termos aqui)
+...
+`;
 
 export default function Register() {
   const { signUp, loading } = useAuth();
@@ -26,6 +36,9 @@ export default function Register() {
 
   const [expanded, setExpanded] = useState(false);
   const [secureText, setSecureText] = useState(true);
+  
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
+  const [showTerms, setShowTerms] = useState(false);
 
   const [form, setForm] = useState({
     nome: '',
@@ -80,11 +93,13 @@ export default function Register() {
   const validateEmail = (email: string) => /\S+@\S+\.\S+/.test(email);
 
   const handleBack = () => {
-    if (router.canGoBack()) {
-      router.back();
-    } else {
-      router.replace('/');
-    }
+    if (router.canGoBack()) router.back();
+    else router.replace('/');
+  };
+
+  const handleConfirmTerms = () => {
+    setAcceptedTerms(true);
+    setShowTerms(false);
   };
 
   const handleRegister = async () => {
@@ -92,28 +107,42 @@ export default function Register() {
     let hasError = false;
 
     if (!form.email || !validateEmail(form.email)) {
-      currentErrors.email = 'Digite um e-mail válido.';
+      currentErrors.email = 'E-mail inválido.';
       hasError = true;
     }
-    if (!form.nome) {
-      currentErrors.nome = 'Nome é obrigatório.';
+    if (!form.nome || form.nome.trim().length < 3) {
+      currentErrors.nome = 'Nome completo obrigatório.';
       hasError = true;
     }
-    if (!form.telefone || form.telefone.length < 14) {
-      currentErrors.telefone = 'Telefone incompleto.';
+    if (!form.telefone || form.telefone.replace(/\D/g, '').length < 10) {
+      currentErrors.telefone = 'Telefone inválido.';
       hasError = true;
     }
-    if (!form.cpf || form.cpf.length < 14) {
-      currentErrors.cpf = 'CPF incompleto.';
+    if (!form.cpf || form.cpf.replace(/\D/g, '').length < 11) {
+      currentErrors.cpf = 'CPF inválido.';
       hasError = true;
     }
     if (!form.password || form.password.length < 6) {
-      currentErrors.password = 'A senha deve ter no mínimo 6 caracteres.';
+      currentErrors.password = 'Mínimo 6 caracteres.';
       hasError = true;
+    }
+
+    if (!acceptedTerms) {
+      Toast.show({
+        type: 'error',
+        text1: 'Termos de Uso',
+        text2: 'Aceite os termos para continuar.',
+      });
+      return; 
     }
 
     if (hasError) {
       setErrors(currentErrors);
+      Toast.show({
+        type: 'error',
+        text1: 'Atenção',
+        text2: 'Verifique os campos em vermelho.',
+      });
       return;
     }
 
@@ -130,21 +159,32 @@ export default function Register() {
       });
 
       await AsyncStorage.setItem('@user_email', form.email);
-
+      
       if (response && response.token) {
         await AsyncStorage.setItem('@auth_token', response.token);
       }
 
-      if (router.canDismiss()) router.dismissAll();
+      Toast.show({
+        type: 'success',
+        text1: 'Sucesso!',
+        text2: 'Conta criada com sucesso.',
+      });
 
       setTimeout(() => {
-        // CORREÇÃO: Apontando para a raiz da tab (index.tsx)
+        if (router.canDismiss()) router.dismissAll();
         router.replace('/(tabs)'); 
-      }, 100);
+      }, 1000);
       
     } catch (error: any) {
-      console.log('Erro no cadastro:', error);
-      Alert.alert("Erro", "Não foi possível criar a conta. Verifique os dados ou tente mais tarde.");
+      console.log('Erro capturado na UI:', error);
+      
+      const msg = error.response?.data?.message || "Erro ao conectar com o servidor.";
+      
+      Toast.show({
+        type: 'error',
+        text1: 'Erro no cadastro',
+        text2: msg,
+      });
     }
   };
 
@@ -166,7 +206,6 @@ export default function Register() {
         </View>
       </View>
 
-
       <View style={styles.whiteCard}>
         <KeyboardAvoidingView 
            behavior={Platform.OS === 'ios' ? 'padding' : undefined} 
@@ -179,7 +218,7 @@ export default function Register() {
           >
             <TouchableOpacity 
               style={styles.googleBtn}
-              onPress={() => Alert.alert("Em breve", "Cadastro com Google indisponível no momento.")}
+              onPress={() => Toast.show({ type: 'info', text1: 'Em breve', text2: 'Login com Google indisponível.' })}
             >
               <GoogleLogo width={24} height={24} style={{ marginRight: 15 }} />
               <Text style={styles.googleText}>Cadastrar-se com Google</Text>
@@ -208,7 +247,6 @@ export default function Register() {
 
             {expanded && (
               <View>
-          
                 <TextInput
                   label="Telefone"
                   placeholder="(99) 99999-9999"
@@ -237,7 +275,6 @@ export default function Register() {
                 />
                 <HelperText type="error" visible={!!errors.nome}>{errors.nome}</HelperText>
 
-
                 <TextInput
                   label="CPF"
                   value={form.cpf}
@@ -251,7 +288,6 @@ export default function Register() {
                   maxLength={14}
                 />
                 <HelperText type="error" visible={!!errors.cpf}>{errors.cpf}</HelperText>
-
             
                 <TextInput
                   label="Senha"
@@ -273,7 +309,25 @@ export default function Register() {
                 />
                 <HelperText type="error" visible={!!errors.password}>{errors.password}</HelperText>
 
-                <View style={{ height: 20 }} />
+                {/* CHECKBOX TERMOS */}
+                <View style={styles.termsContainer}>
+                  <Checkbox
+                    status={acceptedTerms ? 'checked' : 'unchecked'}
+                    onPress={() => setAcceptedTerms(!acceptedTerms)}
+                    color={theme.colors.primary}
+                  />
+                  <View style={{flex: 1}}>
+                    <Text style={styles.termsText}>
+                      Li e aceito os{' '}
+                      <Text style={styles.termsLink} onPress={() => setShowTerms(true)}>
+                        Termos de Uso
+                      </Text>{' '}
+                      e a Política de Privacidade.
+                    </Text>
+                  </View>
+                </View>
+
+                <View style={{ height: 10 }} />
           
                 <Button
                   mode="contained"
@@ -284,7 +338,7 @@ export default function Register() {
                   contentStyle={{ height: 50 }}
                   labelStyle={{ fontSize: 18, fontWeight: 'bold' }}
                 >
-                  Continuar
+                  Criar Conta
                 </Button>
                 <View style={{ height: 40 }} />
               </View>
@@ -292,30 +346,56 @@ export default function Register() {
           </ScrollView>
         </KeyboardAvoidingView>
       </View>
+
+      {/* MODAL TERMOS */}
+      <Modal
+        visible={showTerms}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowTerms(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Termos e Privacidade</Text>
+              <TouchableOpacity onPress={() => setShowTerms(false)}>
+                <MaterialCommunityIcons name="close" size={24} color="#333" />
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={styles.modalBody}>
+              <Text style={styles.modalText}>{GENERIC_TERMS}</Text>
+            </ScrollView>
+            <Button 
+              mode="contained" 
+              onPress={handleConfirmTerms}
+              style={styles.modalButton}
+              labelStyle={{fontWeight: 'bold', fontSize: 16}}
+            >
+              Li e Concordo
+            </Button>
+          </View>
+        </View>
+      </Modal>
+
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: theme.colors.secondary },
-
   yellowHeader: {
     height: 190,
     padding: 20,
     paddingTop: Platform.OS === 'ios' ? 50 : 35,
   },
-
   backButton: { marginBottom: 10, width: 40 },
-
   logoContainer: { alignItems: 'center', justifyContent: 'center' },
-
   logoImage: {
     width: 200,
     height: 80,
     resizeMode: 'contain',
     marginBottom: 10,
   },
-
   headerTitle: {
     fontSize: 16,
     fontWeight: 'bold',
@@ -323,7 +403,6 @@ const styles = StyleSheet.create({
     color: '#333',
     paddingHorizontal: 20,
   },
-
   whiteCard: {
     flex: 1,
     backgroundColor: '#fff',
@@ -332,9 +411,7 @@ const styles = StyleSheet.create({
     paddingTop: 20,
     overflow: 'hidden',
   },
-
   scrollContent: { paddingHorizontal: 25, paddingBottom: 20 },
-
   googleBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -346,20 +423,70 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     backgroundColor: '#fff',
   },
-
   googleText: { color: '#333', fontWeight: 'bold', fontSize: 16 },
-
   divider: { flexDirection: 'row', alignItems: 'center', marginBottom: 25 },
-
   line: { flex: 1, height: 1, backgroundColor: '#E0E0E0' },
-
   orText: { marginHorizontal: 15, color: '#888', fontSize: 14, fontWeight: '500' },
-
   input: { marginBottom: 2, backgroundColor: '#fff', fontSize: 16 }, 
-
   mainBtn: {
     borderRadius: 8,
     backgroundColor: theme.colors.primary,
     marginTop: 10
   },
+  termsContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10,
+    marginTop: 5,
+  },
+  termsText: {
+    fontSize: 13,
+    color: '#333',
+    marginLeft: 5,
+    flexWrap: 'wrap',
+  },
+  termsLink: {
+    fontWeight: 'bold',
+    color: theme.colors.primary,
+    textDecorationLine: 'underline',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    padding: 20
+  },
+  modalContent: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 20,
+    maxHeight: '80%',
+    elevation: 5
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+    paddingBottom: 10
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#333'
+  },
+  modalBody: { marginBottom: 20 },
+  modalText: {
+    fontSize: 14,
+    color: '#555',
+    lineHeight: 22,
+    textAlign: 'justify'
+  },
+  modalButton: {
+    backgroundColor: theme.colors.primary,
+    borderRadius: 8,
+    paddingVertical: 6
+  }
 });

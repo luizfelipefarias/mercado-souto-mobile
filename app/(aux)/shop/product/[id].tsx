@@ -436,7 +436,7 @@ export default function ProductDetails() {
                         ))}
                     </View>
                 </View>
-
+        </ScrollView>
                 {/* 4. DESCRIÇÃO */}
                 <View style={styles.card}>
                     <Text style={styles.sectionTitle}>Descrição</Text>
@@ -444,125 +444,6 @@ export default function ProductDetails() {
                         {product.description || 'Produto sem descrição.'}
                     </Text>
                 </View>
-
-                {/* 5. AVALIAÇÕES */}
-                <View style={styles.card}>
-                    <View style={{flexDirection:'row', justifyContent:'space-between', alignItems:'center', marginBottom: 15}}>
-                        <Text style={[styles.sectionTitle, {marginBottom:0}]}>Opiniões</Text>
-                        <TouchableOpacity onPress={() => {
-                            if (!user || isGuest) {
-                                Alert.alert("Login", "Entre para avaliar.", [
-                                    { text: "Cancelar" },
-                                    { text: "Entrar", onPress: () => router.push('/(auth)/login' as any) }
-                                ]);
-                            } else {
-                                setModalVisible(true);
-                            }
-                        }}>
-                            <Text style={{color: THEME_PRIMARY, fontWeight:'bold'}}>Avaliar produto</Text>
-                        </TouchableOpacity>
-                    </View>
-                    
-                    <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 20 }}>
-                        <Text style={{ fontSize: 36, color: '#333', fontWeight: 'bold' }}>{product.averageRating?.toFixed(1) || '0.0'}</Text>
-                        <View style={{ marginLeft: 15 }}>
-                             <View style={{ flexDirection: 'row' }}>
-                                {[1,2,3,4,5].map((star) => (
-                                    <FontAwesome 
-                                        key={star} 
-                                        name={star <= (product.averageRating || 0) ? "star" : "star-o"} 
-                                        size={18} 
-                                        color={THEME_PRIMARY} 
-                                    />
-                                ))}
-                             </View>
-                             <Text style={{ color: '#999', fontSize: 12 }}>{product.totalReviews || 0} classificações</Text>
-                        </View>
-                    </View>
-
-                    {(!reviews || !Array.isArray(reviews) || reviews.length === 0) ? (
-                        <Text style={{ color: '#999', fontStyle: 'italic' }}>Ainda não há opiniões sobre este produto.</Text>
-                    ) : (
-                        reviews.map((review, index) => (
-                            <View key={index} style={{ marginBottom: 15, borderBottomWidth: 1, borderBottomColor: '#eee', paddingBottom: 10 }}>
-                                <View style={{flexDirection:'row', justifyContent:'space-between'}}>
-                                    <View style={{flexDirection:'row'}}>
-                                        {[1,2,3,4,5].map((star) => (
-                                            <FontAwesome key={star} name={star <= (review.rating || 0) ? "star" : "star-o"} size={12} color={THEME_PRIMARY} />
-                                        ))}
-                                    </View>
-                                    <Text style={{fontSize: 12, color: '#999'}}>{review.clientName || 'Cliente'}</Text>
-                                </View>
-                                <Text style={{fontWeight:'bold', marginTop: 5, color:'#333'}}>{review.title}</Text>
-                                <Text style={{ marginTop: 2, color: '#555' }}>{review.description}</Text>
-                            </View>
-                        ))
-                    )}
-                </View>
-
-            </ScrollView>
-
-            {/* MODAL */}
-            <Modal
-                visible={modalVisible}
-                animationType="slide"
-                transparent={true}
-                onRequestClose={() => setModalVisible(false)}
-            >
-                <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{flex: 1}}>
-                    <View style={styles.modalOverlay}>
-                        <View style={styles.modalContent}>
-                            <View style={styles.modalHeader}>
-                                <Text style={styles.modalTitle}>Escreva sua avaliação</Text>
-                                <TouchableOpacity onPress={() => setModalVisible(false)}>
-                                    <Ionicons name="close" size={24} color="#666" />
-                                </TouchableOpacity>
-                            </View>
-                            
-                            <View style={styles.starsContainer}>
-                                {[1, 2, 3, 4, 5].map((star) => (
-                                    <TouchableOpacity key={star} onPress={() => setNewRating(star)}>
-                                        <FontAwesome 
-                                            name={star <= newRating ? "star" : "star-o"} 
-                                            size={40} 
-                                            color={THEME_PRIMARY} 
-                                            style={{ marginHorizontal: 5 }}
-                                        />
-                                    </TouchableOpacity>
-                                ))}
-                            </View>
-                            <Text style={{textAlign:'center', color: '#999', marginBottom: 15}}>
-                                {newRating === 0 ? "Toque nas estrelas para avaliar" : `${newRating} estrelas selecionadas`}
-                            </Text>
-
-                            <TextInput
-                                placeholder="Título (ex: Ótimo produto!)"
-                                style={styles.input}
-                                value={newTitle}
-                                onChangeText={setNewTitle}
-                            />
-
-                            <TextInput
-                                placeholder="Descreva sua experiência..."
-                                style={[styles.input, { height: 100, textAlignVertical: 'top' }]}
-                                value={newDesc}
-                                onChangeText={setNewDesc}
-                                multiline
-                            />
-
-                            <Button 
-                                mode="contained" 
-                                onPress={handleSubmitReview} 
-                                loading={loadingReview}
-                                buttonColor={THEME_PRIMARY}
-                                style={{ marginTop: 10 }}
-                            >
-                                Enviar Avaliação
-                            </Button>
-                        </View>
-                    </View>
-                </KeyboardAvoidingView>
-            </Modal>
 
             <Snackbar
                 visible={snackbarVisible}

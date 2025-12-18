@@ -1,7 +1,6 @@
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-
 const TOKEN_KEY = '@auth_token'; 
 
 const api = axios.create({
@@ -12,20 +11,29 @@ const api = axios.create({
   },
 });
 
-
+// Função para limpar dados se o token for inválido
 const handleUnauthorized = async () => {
-    await AsyncStorage.removeItem(TOKEN_KEY);
-    console.log("Token expirado ou inválido. Logout forçado.");
+    try {
+        await AsyncStorage.removeItem(TOKEN_KEY);
+        console.log("Token expirado ou inválido. Limpeza efetuada.");
+    } catch (e) {
+        console.error("Erro ao limpar token", e);
+    }
 };
 
-
+// --- INTERCEPTOR DE REQUISIÇÃO (ENVIA O TOKEN) ---
 api.interceptors.request.use(
   async (config) => {
     try {
       const token = await AsyncStorage.getItem(TOKEN_KEY);
 
       if (token && config.headers) {
-        config.headers.Authorization = `Bearer ${token}`;
+        // CORREÇÃO CRÍTICA: LIMPEZA DO TOKEN
+        // Remove 'Bearer', 'bearer', e espaços em branco para garantir um token limpo
+        const cleanToken = token.replace(/Bearer/gi, '').trim();
+
+        // Monta o cabeçalho corretamente
+        config.headers.Authorization = `Bearer ${cleanToken}`;
       }
     } catch (error) {
       console.error("Erro ao recuperar token:", error);
@@ -37,7 +45,7 @@ api.interceptors.request.use(
   }
 );
 
-
+// --- INTERCEPTOR DE RESPOSTA (TRATA ERROS) ---
 api.interceptors.response.use(
   (response) => {
     return response;
@@ -45,10 +53,17 @@ api.interceptors.response.use(
   async (error) => {
     if (error.response) {
       console.log('API Error Status:', error.response.status);
-      console.log('API Error Data:', error.response.data);
+      // Cuidado ao logar data se for muito grande
+      if (error.response.data && !error.response.data.token) { 
+          console.log('API Error Data:', error.response.data);
+      }
 
+      // Se der erro de autenticação (401 ou 403)
       if (error.response.status === 401 || error.response.status === 403) {
-        const isAuthRoute = error.config.url?.includes('/auth/login') || error.config.url?.includes('/auth/register');
+        // Verifica se o erro não veio da própria tentativa de login/cadastro
+        // para não limpar o token enquanto o usuário tenta entrar
+        const url = error.config.url || '';
+        const isAuthRoute = url.includes('/login') || url.includes('/client'); 
         
         if (!isAuthRoute) {
             handleUnauthorized();

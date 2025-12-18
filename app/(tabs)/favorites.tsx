@@ -6,7 +6,6 @@ import {
   Image,
   TouchableOpacity,
   ActivityIndicator,
-  SafeAreaView,
   StatusBar,
   Platform,
   Alert
@@ -14,6 +13,8 @@ import {
 import { Text } from 'react-native-paper';
 import { useRouter } from 'expo-router';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { SafeAreaView } from 'react-native-safe-area-context'; 
+
 import { theme } from '@/constants/theme';
 import { useCart } from '@/context/CartContext'; 
 import { useFavorites, FavoriteProduct } from '@/context/FavoritesContext';
@@ -94,59 +95,67 @@ export default function FavoritesScreen() {
   const cartItemCount = cartItems.reduce((sum, item) => sum + item.quantity, 0);
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.safeArea} edges={['top']}>
       <StatusBar barStyle="dark-content" backgroundColor={theme.colors.secondary} />
 
-      {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Favoritos</Text>
+      {/* Conteúdo com fundo cinza */}
+      <View style={styles.container}>
+        
+        {/* Header */}
+        <View style={styles.header}>
+            <Text style={styles.headerTitle}>Favoritos</Text>
 
-        <TouchableOpacity onPress={() => router.push('/(aux)/shop/cart/index' as any)} style={{ padding: 5 }}>
-            <MaterialCommunityIcons name="cart-outline" size={24} color="#333" />
-            {cartItemCount > 0 && (
-                <View style={styles.badge}>
-                    <Text style={styles.badgeText}>{cartItemCount}</Text>
+            {/* Link do Carrinho Corrigido */}
+            <TouchableOpacity onPress={() => router.push('/(aux)/shop/cart' as any)} style={{ padding: 5 }}>
+                <MaterialCommunityIcons name="cart-outline" size={24} color="#333" />
+                {cartItemCount > 0 && (
+                    <View style={styles.badge}>
+                        <Text style={styles.badgeText}>{cartItemCount}</Text>
+                    </View>
+                )}
+            </TouchableOpacity>
+        </View>
+
+        {/* Lista de Produtos */}
+        {loadingFavorites ? (
+            <ActivityIndicator
+            size="large"
+            color={theme.colors.primary}
+            style={{ marginTop: 50 }}
+            />
+        ) : (
+            <FlatList
+            data={favorites}
+            renderItem={renderItem}
+            keyExtractor={item => String(item.id)}
+            contentContainerStyle={{ padding: 10, paddingBottom: 80 }}
+            showsVerticalScrollIndicator={false}
+            onRefresh={refreshFavorites}
+            refreshing={loadingFavorites}
+            ListEmptyComponent={
+                <View style={styles.emptyContainer}>
+                    <MaterialCommunityIcons name="heart-broken" size={60} color="#ddd" />
+                    <Text style={styles.emptyText}>Você não tem favoritos ainda.</Text>
+                    <TouchableOpacity onPress={() => router.push('/(tabs)' as any)} style={{ marginTop: 15 }}>
+                        <Text style={styles.linkText}>Descobrir produtos</Text>
+                    </TouchableOpacity>
                 </View>
-            )}
-        </TouchableOpacity>
+            }
+            />
+        )}
       </View>
-
-      {/* Lista de Produtos */}
-      {loadingFavorites ? (
-        <ActivityIndicator
-          size="large"
-          color={theme.colors.primary}
-          style={{ marginTop: 50 }}
-        />
-      ) : (
-        <FlatList
-          data={favorites}
-          renderItem={renderItem}
-          keyExtractor={item => String(item.id)}
-          contentContainerStyle={{ padding: 10, paddingBottom: 80 }}
-          showsVerticalScrollIndicator={false}
-          onRefresh={refreshFavorites}
-          refreshing={loadingFavorites}
-          ListEmptyComponent={
-            <View style={styles.emptyContainer}>
-                <MaterialCommunityIcons name="heart-broken" size={60} color="#ddd" />
-                <Text style={styles.emptyText}>Você não tem favoritos ainda.</Text>
-                <TouchableOpacity onPress={() => router.push('/(tabs)' as any)} style={{ marginTop: 15 }}>
-                    <Text style={styles.linkText}>Descobrir produtos</Text>
-                </TouchableOpacity>
-            </View>
-          }
-        />
-      )}
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  safeArea: {
+      flex: 1,
+      backgroundColor: theme.colors.secondary 
+  },
   container: { 
       flex: 1, 
       backgroundColor: '#f5f5f5',
-      paddingTop: Platform.OS === 'android' ? 30 : 0 
   },
   header: {
     flexDirection: 'row',
@@ -155,6 +164,10 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.secondary,
     alignItems: 'center',
     elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
   },
   headerTitle: { fontSize: 20, fontWeight: '500', color: '#333' },
   

@@ -4,35 +4,33 @@ import {
     StyleSheet, 
     ScrollView, 
     TouchableOpacity, 
-    Alert, 
     SafeAreaView, 
     Platform, 
     StatusBar,
     KeyboardAvoidingView 
 } from 'react-native';
-import { Text, TextInput, Button, ActivityIndicator } from 'react-native-paper';
+import { Text, TextInput, Button, ActivityIndicator, HelperText } from 'react-native-paper';
 import { useRouter, useLocalSearchParams } from 'expo-router'; 
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage'; 
+import Toast from 'react-native-toast-message'; 
 
 import { theme } from '../../../../src/constants/theme';
 import { useAuth } from '../../../../src/context/AuthContext';
 import api from '../../../../src/services/api';
-import { Client, Address } from '../../../../src/interfaces'; 
+import { Address } from '../../../../src/interfaces'; 
 
 const GUEST_ADDRESS_KEY = '@guest_addresses';
 
-// Definindo o tipo de dado que vem do AddressList para edição
 type DisplayAddress = Address & {
     neighborhood?: string;
 };
 
-// REMOVENDO CITY/STATE DO ESTADO PRINCIPAL DO FORM
 type AddressFormData = {
     zipCode: string;
     street: string;
     number: string;
-    complement: string; // Usado para Referência/Observação
+    complement: string;
     neighborhood: string;
 };
 
@@ -42,11 +40,9 @@ export default function AddressForm() {
     const params = useLocalSearchParams(); 
 
     const [editingAddressId, setEditingAddressId] = useState<number | null>(null);
-
     const [loading, setLoading] = useState(false);
     const [loadingCep, setLoadingCep] = useState(false);
 
-    // ESTADOS ADICIONADOS: Nome Completo e dados temporários do ViaCEP
     const [contactName, setContactName] = useState(user?.name || ''); 
     const [tempCity, setTempCity] = useState('');
     const [tempState, setTempState] = useState('');
@@ -59,12 +55,19 @@ export default function AddressForm() {
         complement: '',
         neighborhood: '',
     });
+
+    const [errors, setErrors] = useState({
+        contactName: false,
+        contactPhone: false,
+        zipCode: false,
+        neighborhood: false,
+        street: false,
+        number: false,
+        city: false
+    });
     
-    // ESTADO PARA ARMAZENAR DADOS ORIGINAIS (para comparação)
     const [originalForm, setOriginalForm] = useState<{ form: AddressFormData, name: string, phone: string, city: string, state: string } | null>(null);
 
-
-    // 🟢 EFEITO: Carrega dados do endereço para edição
     useEffect(() => {
         if (params.address && typeof params.address === 'string') {
             try {
@@ -89,7 +92,6 @@ export default function AddressForm() {
                 setTempCity(initialCity);
                 setTempState(initialState);
                 
-                // SALVA O ESTADO ORIGINAL APÓS CARREGAR
                 setOriginalForm({
                     form: initialForm, 
                     name: initialName, 
@@ -99,23 +101,18 @@ export default function AddressForm() {
                 });
 
             } catch (e) {
-                console.error("Erro ao carregar endereço para edição:", e);
-                Alert.alert('Erro', 'Não foi possível carregar os dados de edição.');
+                Toast.show({ type: 'error', text1: 'Erro', text2: 'Falha ao carregar dados.' });
             }
         }
     }, [params.address, user?.phone, user?.name]);
 
-
-    // 🟢 MEMO PARA VERIFICAR SE HOUVE ALTERAÇÕES
     const hasChanges = useMemo(() => {
-        if (!originalForm || !editingAddressId) return true; // Se for criação, sempre é true (válido)
+        if (!originalForm || !editingAddressId) return true; 
 
-        // Compara campos do formulário
         const formChanged = Object.keys(form).some(key => 
             form[key as keyof AddressFormData] !== originalForm.form[key as keyof AddressFormData]
         );
         
-        // Compara campos de contato e CEP preenchidos
         const otherChanged = 
             contactName !== originalForm.name ||
             contactPhone !== originalForm.phone ||
@@ -123,31 +120,52 @@ export default function AddressForm() {
             tempState !== originalForm.state;
 
         return formChanged || otherChanged;
-
     }, [form, originalForm, contactName, contactPhone, tempCity, tempState, editingAddressId]);
 
+    const validateForm = () => {
+        const newErrors = {
+            contactName: contactName.trim().length < 3,
+            contactPhone: contactPhone.replace(/\D/g, '').length < 10,
+            zipCode: form.zipCode.replace(/\D/g, '').length !== 8,
+            neighborhood: form.neighborhood.trim() === '',
+            street: form.street.trim() === '',
+            number: form.number.trim() === '',
+            city: tempCity.trim() === ''
+        };
 
-    const isFormValid = useMemo(() => {
-        return (
-            form.zipCode.replace(/\D/g, '').length === 8 &&
-            form.street.trim() &&
-            form.number.trim() &&
-            form.neighborhood.trim() &&
-            tempCity.trim() && 
-            tempState.trim() && 
-            contactName.trim().length >= 3 &&
-            contactPhone.replace(/\D/g, '').length >= 10 
-        );
-    }, [form, tempCity, tempState, contactPhone, contactName]);
+        setErrors(newErrors);
+        return !Object.values(newErrors).includes(true);
+    };
 
     const handleChange = useCallback((key: keyof AddressFormData, value: string) => {
         setForm(prev => ({ ...prev, [key]: value }));
-    }, []);
+        if (errors[key as keyof typeof errors]) {
+            setErrors(prev => ({ ...prev, [key]: false }));
+        }
+    }, [errors]);
+
+    // Lógica da máscara de telefone
+    const handlePhoneChange = (text: string) => {
+        // 1. Remove tudo que não é número
+        let v = text.replace(/\D/g, '');
+        // 2. Limita tamanho (11 dígitos para celular com DDD)
+        if (v.length > 11) v = v.slice(0, 11);
+
+        // 3. Aplica máscara (XX) XXXXX-XXXX
+        v = v.replace(/^(\d{2})(\d)/, '($1) $2');
+        v = v.replace(/(\d{5})(\d)/, '$1-$2');
+
+        setContactPhone(v);
+        setErrors(p => ({...p, contactPhone: false}));
+    };
 
     const handleBlurCep = useCallback(async () => {
         const cleanCep = form.zipCode.replace(/\D/g, '');
 
-        if (cleanCep.length !== 8) return;
+        if (cleanCep.length !== 8) {
+            setErrors(prev => ({ ...prev, zipCode: true }));
+            return;
+        }
 
         setLoadingCep(true);
         try {
@@ -162,19 +180,19 @@ export default function AddressForm() {
                 }));
                 setTempCity(data.localidade || '');
                 setTempState(data.uf || '');
+                setErrors(prev => ({ ...prev, zipCode: false, street: false, neighborhood: false, city: false }));
             } else {
-                Alert.alert('Aviso', 'CEP não encontrado.');
+                Toast.show({ type: 'error', text1: 'CEP não encontrado', text2: 'Verifique o número digitado.' });
                 setTempCity('');
                 setTempState('');
             }
         } catch {
-            Alert.alert('Erro', 'Falha ao buscar CEP. Verifique sua conexão.');
+            Toast.show({ type: 'error', text1: 'Erro de conexão', text2: 'Não foi possível buscar o CEP.' });
         } finally {
             setLoadingCep(false);
         }
     }, [form.zipCode]);
     
-    // Lógica de salvar endereço para GUEST
     const saveGuestAddress = async (payload: any, isEditing: boolean) => {
         const newAddress: Address = { 
             id: isEditing && editingAddressId ? editingAddressId : Date.now(),
@@ -195,7 +213,6 @@ export default function AddressForm() {
             neighborhood: payload.additionalInfo
         } as DisplayAddress;
 
-
         const storedAddresses = await AsyncStorage.getItem(GUEST_ADDRESS_KEY);
         let currentAddresses: DisplayAddress[] = storedAddresses ? JSON.parse(storedAddresses) : [];
 
@@ -208,14 +225,12 @@ export default function AddressForm() {
         }
 
         await AsyncStorage.setItem(GUEST_ADDRESS_KEY, JSON.stringify(currentAddresses));
-        Alert.alert('Sucesso', 'Endereço salvo localmente!');
+        Toast.show({ type: 'success', text1: 'Sucesso', text2: 'Endereço salvo localmente!' });
     };
 
     const handleRedirect = () => {
         const comingFromCheckout = params.fromCheckout === 'true';
-
         if (isGuest) {
-
             router.replace('/(auth)/login' as any); 
         } else if (comingFromCheckout) {
             router.replace('/(aux)/shop/checkout' as any);
@@ -224,27 +239,23 @@ export default function AddressForm() {
         }
     };
 
-
     const handleSave = useCallback(async () => {
-        if (!isFormValid) {
-            Alert.alert('Atenção', 'Preencha todos os campos obrigatórios.');
+        if (!validateForm()) {
+            Toast.show({ 
+                type: 'error', 
+                text1: 'Campos obrigatórios', 
+                text2: 'Verifique os campos em vermelho.' 
+            });
             return;
         }
-
 
         if (editingAddressId && !hasChanges) {
-            Alert.alert(
-                'Nenhuma alteração', 
-                'Você não fez alterações no endereço. Clique em "Fechar" se não deseja salvar.',
-                [{ text: "Ok" }]
-            );
+            Toast.show({ type: 'info', text1: 'Sem alterações', text2: 'Nenhum dado foi modificado.' });
             return;
         }
-
 
         const userId = user?.id;
         const isEditing = !!editingAddressId; 
-
 
         const payload = {
             cep: form.zipCode.replace(/\D/g, ''),
@@ -257,46 +268,41 @@ export default function AddressForm() {
             contactPhone: contactPhone, 
         };
 
-
         if (isGuest) {
             try {
                 await saveGuestAddress(payload, isEditing);
                 handleRedirect(); 
-
             } catch (error) {
-                console.error("Erro ao salvar endereço guest:", error);
-                Alert.alert('Erro', 'Não foi possível salvar o endereço localmente.');
+                Toast.show({ type: 'error', text1: 'Erro', text2: 'Falha ao salvar localmente.' });
             }
             return;
         }
 
-
         if (!userId) {
-             Alert.alert('Erro', 'Usuário não autenticado para salvar na API.');
+             Toast.show({ type: 'error', text1: 'Erro', text2: 'Usuário não autenticado.' });
              return;
         }
 
-
         setLoading(true);
         try {
-            const endpoint = isEditing 
-                ? `/api/address/${editingAddressId}` 
-                : `/api/address/${userId}`; 
-
+            const endpoint = isEditing ? `/api/address/${editingAddressId}` : `/api/address/${userId}`; 
             const method = isEditing ? api.put : api.post;
 
             await method(endpoint, payload);
 
-            Alert.alert('Sucesso', `Endereço ${isEditing ? 'atualizado' : 'cadastrado'} com sucesso!`);
+            Toast.show({ 
+                type: 'success', 
+                text1: 'Sucesso!', 
+                text2: `Endereço ${isEditing ? 'atualizado' : 'cadastrado'}.` 
+            });
             
             handleRedirect(); 
         } catch (error) {
-            console.error("Erro ao salvar endereço API:", error);
-            Alert.alert('Erro', 'Não foi possível salvar o endereço. Tente novamente.');
+            Toast.show({ type: 'error', text1: 'Erro API', text2: 'Não foi possível salvar o endereço.' });
         } finally {
             setLoading(false);
         }
-    }, [form, isFormValid, user, isGuest, router, editingAddressId, tempCity, tempState, contactPhone, contactName, params.fromCheckout, hasChanges]); 
+    }, [form, contactName, contactPhone, user, isGuest, editingAddressId, hasChanges, tempCity]); 
 
     return (
         <View style={styles.container}>
@@ -304,7 +310,6 @@ export default function AddressForm() {
 
             <SafeAreaView style={styles.header}>
                 <View style={styles.headerContent}>
-
                     <TouchableOpacity 
                         onPress={() => router.canGoBack() ? router.back() : router.replace('/(tabs)')} 
                         hitSlop={{top: 10, bottom: 10, left: 10, right: 10}}
@@ -318,37 +323,37 @@ export default function AddressForm() {
                 </View>
             </SafeAreaView>
 
-            <KeyboardAvoidingView 
-                behavior={Platform.OS === 'ios' ? 'padding' : undefined} 
-                style={{ flex: 1 }}
-            >
+            <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
                 <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
 
-                    <Text style={styles.sectionTitle}>Dados do local</Text>
+                    <Text style={styles.sectionTitle}>Dados de Contato</Text>
                     
-
                     <TextInput
-                        label="Nome completo (Ex: João da Silva)"
+                        label="Nome completo"
                         mode="outlined"
                         value={contactName}
-                        onChangeText={setContactName}
+                        onChangeText={(t) => { setContactName(t); setErrors(p => ({...p, contactName: false})) }}
                         style={styles.input}
-                        outlineColor="#ddd"
+                        error={errors.contactName}
                         activeOutlineColor={theme.colors.primary}
                     />
-
+                    {errors.contactName && <HelperText type="error" visible={true}>Digite o nome completo do recebedor.</HelperText>}
 
                     <TextInput
-                        label="Telefone para contato"
+                        label="Telefone (DDD + Número)"
                         mode="outlined"
                         value={contactPhone}
-                        onChangeText={setContactPhone}
+                        onChangeText={handlePhoneChange} // Usando a função com máscara
+                        maxLength={15} // Limita (XX) XXXXX-XXXX
                         style={styles.input}
-                        outlineColor="#ddd"
+                        error={errors.contactPhone}
                         activeOutlineColor={theme.colors.primary}
                         keyboardType="phone-pad"
+                        placeholder='(00) 00000-0000'
                     />
+                    {errors.contactPhone && <HelperText type="error" visible={true}>Telefone inválido (mínimo 10 dígitos).</HelperText>}
 
+                    <Text style={[styles.sectionTitle, {marginTop: 15}]}>Endereço</Text>
 
                     <TextInput
                         label="CEP"
@@ -360,13 +365,13 @@ export default function AddressForm() {
                         }}
                         onBlur={handleBlurCep}
                         style={styles.input}
-                        outlineColor="#ddd"
+                        error={errors.zipCode}
                         activeOutlineColor={theme.colors.primary}
                         keyboardType="numeric"
                         maxLength={9}
                         right={loadingCep ? <TextInput.Icon icon={() => <ActivityIndicator size={20} color={theme.colors.primary} />} /> : null}
                     />
-
+                    {errors.zipCode && <HelperText type="error" visible={true}>CEP inválido.</HelperText>}
 
                     <TextInput
                         label="Bairro"
@@ -374,9 +379,10 @@ export default function AddressForm() {
                         value={form.neighborhood}
                         onChangeText={t => handleChange('neighborhood', t)}
                         style={styles.input}
-                        outlineColor="#ddd"
+                        error={errors.neighborhood}
                         activeOutlineColor={theme.colors.primary}
                     />
+                    {errors.neighborhood && <HelperText type="error" visible={true}>Bairro obrigatório.</HelperText>}
 
                     <TextInput
                         label="Rua / Avenida"
@@ -384,9 +390,10 @@ export default function AddressForm() {
                         value={form.street}
                         onChangeText={t => handleChange('street', t)}
                         style={styles.input}
-                        outlineColor="#ddd"
+                        error={errors.street}
                         activeOutlineColor={theme.colors.primary}
                     />
+                    {errors.street && <HelperText type="error" visible={true}>Rua obrigatória.</HelperText>}
 
                     <View style={styles.row}>
                         <View style={{ flex: 1, marginRight: 10 }}>
@@ -396,37 +403,29 @@ export default function AddressForm() {
                                 value={form.number}
                                 onChangeText={t => handleChange('number', t)}
                                 style={styles.input}
-                                outlineColor="#ddd"
+                                error={errors.number}
                                 activeOutlineColor={theme.colors.primary}
                                 keyboardType="numeric"
                             />
+                            {errors.number && <HelperText type="error" visible={true}>Obrigatório.</HelperText>}
                         </View>
 
-                        <View style={{ flex: 1 }}>
+                        <View style={{ flex: 1.5 }}>
                             <TextInput
-                                label="Observação/Referência (Opcional)" 
+                                label="Complemento (Opcional)" 
                                 mode="outlined"
                                 value={form.complement}
                                 onChangeText={t => handleChange('complement', t)}
                                 style={styles.input}
-                                outlineColor="#ddd"
                                 activeOutlineColor={theme.colors.primary}
                             />
                         </View>
-                    </View>
-
-                    <View style={styles.footerInfo}>
-                        <MaterialCommunityIcons name="information-outline" size={20} color="#666" />
-                        <Text style={styles.footerText}>
-                            Verifique se os dados estão corretos para garantir a entrega.
-                        </Text>
                     </View>
 
                     <Button 
                         mode="contained" 
                         onPress={handleSave} 
                         loading={loading}
-                        disabled={loading || !isFormValid || !!(editingAddressId && !hasChanges)} 
                         style={styles.saveButton}
                         contentStyle={{ height: 50 }}
                         labelStyle={{ fontSize: 16, fontWeight: 'bold', color: '#fff' }}
@@ -434,7 +433,7 @@ export default function AddressForm() {
                         {editingAddressId ? 'Salvar alterações' : 'Salvar endereço'}
                     </Button>
 
-                    <View style={{ height: 30 }} />
+                    <View style={{ height: 50 }} />
 
                 </ScrollView>
             </KeyboardAvoidingView>
@@ -444,14 +443,12 @@ export default function AddressForm() {
 
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: '#fff' },
-
     header: { 
         backgroundColor: theme.colors.secondary,
         paddingTop: Platform.OS === 'android' ? 30 : 0,
         elevation: 2,
         zIndex: 10,
     },
-
     headerContent: { 
         flexDirection: 'row',
         alignItems: 'center',
@@ -459,58 +456,11 @@ const styles = StyleSheet.create({
         padding: 15,
         height: 60,
     },
-
-    headerTitle: { 
-        fontSize: 18,
-        color: '#333',
-        fontWeight: '500' 
-    },
-
-    content: { 
-        padding: 20 
-    },
-
-    sectionTitle: { 
-        fontSize: 18,
-        fontWeight: 'bold',
-        color: '#333',
-        marginBottom: 15 
-    },
-
-    input: { 
-        backgroundColor: '#fff',
-        fontSize: 16,
-        marginBottom: 12,
-    },
-
-    lockedInput: {
-        backgroundColor: '#f2f2f2',
-        color: '#666'
-    },
-
-    row: { 
-        flexDirection: 'row' 
-    },
-
-    footerInfo: { 
-        flexDirection: 'row',
-        backgroundColor: '#f5f5f5',
-        padding: 15,
-        borderRadius: 6,
-        marginBottom: 20,
-        alignItems: 'center',
-        marginTop: 10
-    },
-
-    footerText: { 
-        fontSize: 12,
-        color: '#666',
-        marginLeft: 10,
-        flex: 1 
-    },
-
-    saveButton: { 
-        backgroundColor: theme.colors.primary,
-        borderRadius: 6 
-    }
+    headerTitle: { fontSize: 18, color: '#333', fontWeight: '500' },
+    content: { padding: 20 },
+    sectionTitle: { fontSize: 16, fontWeight: 'bold', color: '#666', marginBottom: 10 },
+    input: { backgroundColor: '#fff', fontSize: 16, marginBottom: 2 },
+    lockedInput: { backgroundColor: '#f0f0f0', color: '#888' },
+    row: { flexDirection: 'row' },
+    saveButton: { backgroundColor: theme.colors.primary, borderRadius: 6, marginTop: 20 }
 });

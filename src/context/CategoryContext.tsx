@@ -2,11 +2,10 @@ import React, { createContext, useContext, useState, useCallback, useEffect, Rea
 import api from '../services/api';
 import Toast from 'react-native-toast-message';
 
-// Definição do Tipo Categoria
 export type Category = {
   id: number;
   name: string;
-  image?: string; // Caso no futuro tenha imagem
+  image?: string;
 };
 
 interface CategoryContextData {
@@ -25,7 +24,6 @@ export function CategoryProvider({ children }: { children: ReactNode }) {
   const loadCategories = useCallback(async () => {
     setLoading(true);
     try {
-      // Ajuste a rota conforme seu backend (ex: /api/category)
       const response = await api.get('/api/category');
       
       if (Array.isArray(response.data)) {
@@ -35,20 +33,16 @@ export function CategoryProvider({ children }: { children: ReactNode }) {
       }
     } catch (error) {
       console.log('Erro ao carregar categorias:', error);
-      // Não vamos travar o app com Toast aqui para não atrapalhar o fluxo inicial, 
-      // mas logamos o erro.
     } finally {
       setLoading(false);
     }
   }, []);
 
-  // Helper para pegar nome pelo ID (útil em várias telas)
   const getCategoryNameById = useCallback((id: number) => {
     const cat = categories.find(c => c.id === id);
     return cat ? cat.name : 'Outros';
   }, [categories]);
 
-  // Carrega automaticamente ao montar o Provider (início do app)
   useEffect(() => {
     loadCategories();
   }, [loadCategories]);

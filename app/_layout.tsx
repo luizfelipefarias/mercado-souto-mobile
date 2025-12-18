@@ -77,7 +77,7 @@ function RootNavigation() {
       />
       <Stack.Screen name="(aux)/misc/search-results/index" />
       <Stack.Screen name="(aux)/misc/help/index" />
-      <Stack.Screen name="(aux)/misc/review/[id]" />
+
 
     </Stack>
   );

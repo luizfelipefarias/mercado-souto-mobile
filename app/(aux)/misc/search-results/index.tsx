@@ -9,8 +9,10 @@ import {
   StyleSheet,
   TouchableOpacity,
   View,
+  Modal,
+  TouchableWithoutFeedback
 } from 'react-native';
-import { Text } from 'react-native-paper';
+import { Text, Button, Divider, RadioButton, Checkbox } from 'react-native-paper'; // Usando componentes do Paper se tiver, ou nativos
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { theme } from '../../../../src/constants/theme';
@@ -22,49 +24,68 @@ type Product = {
   price: number;
   stock: number;
   imageURL?: string[];
+  specification?: string;
   category?: {
       name: string;
   };
 };
 
+type SortOption = 'relevance' | 'price_asc' | 'price_desc';
+
 export default function SearchResults() {
   const router = useRouter();
   const { q } = useLocalSearchParams<{ q?: string }>();
 
-  const [results, setResults] = useState<Product[]>([]);
+  // --- ESTADOS DE DADOS ---
+  const [allProducts, setAllProducts] = useState<Product[]>([]); // Todos os produtos que deram match (backup)
+  const [results, setResults] = useState<Product[]>([]); // Produtos exibidos na tela (filtrados)
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
 
-  const searchTerm = useMemo(() => String(q || '').toLowerCase(), [q]);
+  // --- ESTADOS DE FILTRO ---
+  const [modalVisible, setModalVisible] = useState(false);
+  const [sortBy, setSortBy] = useState<SortOption>('relevance');
+  const [filterStock, setFilterStock] = useState(false);
 
+  const normalize = (str: string) => {
+      return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  };
+
+  const searchTerm = useMemo(() => normalize(q || ''), [q]);
+
+  // --- BUSCA NA API ---
   const fetchProducts = useCallback(async () => {
     try {
       setLoading(true);
       setError(false);
 
-
       const response = await api.get('/api/product');
-      
       const products: Product[] = Array.isArray(response.data) ? response.data : [];
 
-
+      // Filtra pela busca (q)
       const filtered = products.filter(product => {
-        const titleMatch = product.title.toLowerCase().includes(searchTerm);
-        
+        const title = normalize(product.title || '');
+        const category = normalize(product.category?.name || '');
+        const spec = normalize(product.specification || '');
 
-        const categoryMatch = product.category?.name?.toLowerCase().includes(searchTerm);
-        
+        const matchTitle = title.includes(searchTerm);
+        const matchCategory = category.includes(searchTerm);
+        const matchSpec = spec.includes(searchTerm);
 
         let extraMatch = false;
-        if (searchTerm === 'tecnologia') {
-             const cat = product.category?.name?.toLowerCase() || '';
-             extraMatch = cat.includes('celular') || cat.includes('comput') || cat.includes('eletr');
+        if (searchTerm === 'tecnologia' || searchTerm === 'eletronicos') {
+             extraMatch = 
+                category.includes('celular') || 
+                category.includes('comput') || 
+                category.includes('info') ||
+                title.includes('smart');
         }
 
-        return titleMatch || categoryMatch || extraMatch;
+        return matchTitle || matchCategory || matchSpec || extraMatch;
       });
 
-      setResults(filtered);
+      setAllProducts(filtered); // Salva o "Backup"
+      setResults(filtered);     // Salva o que exibe
     } catch (err) {
       console.log('Erro na busca:', err);
       setError(true);
@@ -76,6 +97,27 @@ export default function SearchResults() {
   useEffect(() => {
     if (searchTerm) fetchProducts();
   }, [fetchProducts, searchTerm]);
+
+  // --- LÓGICA DE APLICAR FILTROS ---
+  const applyFilters = () => {
+      let data = [...allProducts];
+
+      // 1. Filtro de Estoque
+      if (filterStock) {
+          data = data.filter(p => p.stock > 0);
+      }
+
+      // 2. Ordenação
+      if (sortBy === 'price_asc') {
+          data.sort((a, b) => a.price - b.price);
+      } else if (sortBy === 'price_desc') {
+          data.sort((a, b) => b.price - a.price);
+      }
+      // 'relevance' mantem a ordem original da busca
+
+      setResults(data);
+      setModalVisible(false);
+  };
 
   const handleOpenProduct = useCallback(
     (id: number) => {
@@ -111,8 +153,10 @@ export default function SearchResults() {
               R$ {item.price.toFixed(2).replace('.', ',')}
             </Text>
 
-            {item.stock > 0 && (
+            {item.stock > 0 ? (
               <Text style={styles.shipping}>Chegará grátis amanhã</Text>
+            ) : (
+              <Text style={[styles.shipping, {color: '#999'}]}>Esgotado</Text>
             )}
 
             <Text style={styles.installments}>em 6x sem juros</Text>
@@ -123,29 +167,11 @@ export default function SearchResults() {
     [handleOpenProduct]
   );
 
-  const ListEmpty = useMemo(
-    () => (
-      <View style={styles.emptyContainer}>
-        <MaterialCommunityIcons
-          name="magnify-remove-outline"
-          size={60}
-          color="#ddd"
-        />
-        <Text style={styles.emptyTextTitle}>Não encontramos resultados</Text>
-        <Text style={styles.emptyTextSub}>
-          Verifique se a palavra está escrita corretamente ou tente termos mais genéricos.
-        </Text>
-      </View>
-    ),
-    []
-  );
-
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor={theme.colors.secondary} />
 
       <View style={styles.header}>
-
         <TouchableOpacity onPress={() => router.back()} style={styles.inputMock}>
           <MaterialCommunityIcons name="arrow-left" size={24} color="#666" style={{marginRight: 10}}/>
           <Text style={styles.searchText} numberOfLines={1}>
@@ -161,8 +187,12 @@ export default function SearchResults() {
 
       <View style={styles.filters}>
         <Text style={styles.resultCount}>{results.length} resultados</Text>
-
-        <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center' }}>
+        
+        {/* BOTÃO FILTRAR AGORA FUNCIONAL */}
+        <TouchableOpacity 
+            style={{ flexDirection: 'row', alignItems: 'center' }}
+            onPress={() => setModalVisible(true)}
+        >
           <Text style={styles.filterText}>Filtrar</Text>
           <MaterialCommunityIcons name="filter-variant" size={16} color="#3483fa" />
         </TouchableOpacity>
@@ -176,11 +206,7 @@ export default function SearchResults() {
         />
       ) : error ? (
         <View style={styles.emptyContainer}>
-          <MaterialCommunityIcons name="alert-circle-outline" size={48} color="#ccc" />
-          <Text style={styles.emptyTextTitle}>Erro ao buscar produtos</Text>
-          <TouchableOpacity onPress={fetchProducts} style={{marginTop: 10}}>
-             <Text style={{color: theme.colors.primary, fontWeight: 'bold'}}>Tentar novamente</Text>
-          </TouchableOpacity>
+          <Text>Erro ao carregar</Text>
         </View>
       ) : (
         <FlatList
@@ -189,9 +215,90 @@ export default function SearchResults() {
           keyExtractor={item => String(item.id)}
           contentContainerStyle={{ paddingBottom: 20 }} 
           showsVerticalScrollIndicator={false}
-          ListEmptyComponent={ListEmpty}
+          ListEmptyComponent={
+             <View style={styles.emptyContainer}>
+                <MaterialCommunityIcons name="magnify-remove-outline" size={60} color="#ddd" />
+                <Text style={styles.emptyTextTitle}>Não encontramos resultados</Text>
+             </View>
+          }
         />
       )}
+
+      {/* --- MODAL DE FILTRO (BOTTOM SHEET STYLE) --- */}
+      <Modal
+        visible={modalVisible}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setModalVisible(false)}
+      >
+        <TouchableWithoutFeedback onPress={() => setModalVisible(false)}>
+            <View style={styles.modalOverlay} />
+        </TouchableWithoutFeedback>
+
+        <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Filtrar e Ordenar</Text>
+                <TouchableOpacity onPress={() => setModalVisible(false)}>
+                    <MaterialCommunityIcons name="close" size={24} color="#333" />
+                </TouchableOpacity>
+            </View>
+            <Divider />
+
+            <View style={{padding: 20}}>
+                <Text style={styles.filterSectionTitle}>Ordenar por</Text>
+                
+                <TouchableOpacity style={styles.filterOption} onPress={() => setSortBy('relevance')}>
+                    <MaterialCommunityIcons 
+                        name={sortBy === 'relevance' ? "radiobox-marked" : "radiobox-blank"} 
+                        size={24} 
+                        color={theme.colors.primary} 
+                    />
+                    <Text style={styles.filterOptionText}>Mais relevantes</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity style={styles.filterOption} onPress={() => setSortBy('price_asc')}>
+                    <MaterialCommunityIcons 
+                        name={sortBy === 'price_asc' ? "radiobox-marked" : "radiobox-blank"} 
+                        size={24} 
+                        color={theme.colors.primary} 
+                    />
+                    <Text style={styles.filterOptionText}>Menor preço</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity style={styles.filterOption} onPress={() => setSortBy('price_desc')}>
+                    <MaterialCommunityIcons 
+                        name={sortBy === 'price_desc' ? "radiobox-marked" : "radiobox-blank"} 
+                        size={24} 
+                        color={theme.colors.primary} 
+                    />
+                    <Text style={styles.filterOptionText}>Maior preço</Text>
+                </TouchableOpacity>
+
+                <Text style={[styles.filterSectionTitle, {marginTop: 20}]}>Filtros</Text>
+                
+                <TouchableOpacity style={styles.filterOption} onPress={() => setFilterStock(!filterStock)}>
+                    <MaterialCommunityIcons 
+                        name={filterStock ? "checkbox-marked" : "checkbox-blank-outline"} 
+                        size={24} 
+                        color={theme.colors.primary} 
+                    />
+                    <Text style={styles.filterOptionText}>Apenas com estoque</Text>
+                </TouchableOpacity>
+            </View>
+
+            <View style={styles.modalFooter}>
+                <Button 
+                    mode="contained" 
+                    onPress={applyFilters} 
+                    style={styles.applyButton}
+                    labelStyle={{fontSize: 16, fontWeight: 'bold'}}
+                >
+                    Aplicar Filtros
+                </Button>
+            </View>
+        </View>
+      </Modal>
+
     </SafeAreaView>
   );
 }
@@ -314,11 +421,54 @@ const styles = StyleSheet.create({
     marginBottom: 5,
     textAlign: 'center',
   },
-  
-  emptyTextSub: {
-    color: '#999',
-    fontSize: 14,
-    textAlign: 'center',
-    lineHeight: 20,
+
+  // --- ESTILOS DO MODAL ---
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
   },
+  modalContent: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingBottom: 20,
+    maxHeight: '60%',
+    elevation: 10,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 20,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#333',
+  },
+  filterSectionTitle: {
+      fontSize: 16,
+      fontWeight: 'bold',
+      color: '#333',
+      marginBottom: 10
+  },
+  filterOption: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingVertical: 10,
+  },
+  filterOptionText: {
+      fontSize: 16,
+      marginLeft: 10,
+      color: '#333'
+  },
+  modalFooter: {
+      paddingHorizontal: 20,
+      marginTop: 10
+  },
+  applyButton: {
+      backgroundColor: theme.colors.primary,
+      borderRadius: 5,
+      paddingVertical: 5
+  }
 });

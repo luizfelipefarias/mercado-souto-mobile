@@ -1,9 +1,8 @@
-import React, { useState, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   StyleSheet,
   TouchableOpacity,
-  SafeAreaView,
   Platform,
   StatusBar,
   KeyboardAvoidingView,
@@ -14,6 +13,8 @@ import {
 import { Text } from 'react-native-paper';
 import { useRouter } from 'expo-router';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { SafeAreaView } from 'react-native-safe-area-context';
+
 import { theme } from '../../../../src/constants/theme';
 import api from '../../../../src/services/api';
 
@@ -31,7 +32,7 @@ export default function Search() {
   const inputRef = useRef<RNTextInput>(null);
 
   useEffect(() => {
-    inputRef.current?.focus();
+    setTimeout(() => inputRef.current?.focus(), 100);
   }, []);
 
   useEffect(() => {
@@ -82,7 +83,7 @@ export default function Search() {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.safeArea} edges={['top']}>
       <StatusBar barStyle="dark-content" backgroundColor={theme.colors.secondary} />
 
       <View style={styles.header}>
@@ -110,7 +111,6 @@ export default function Search() {
                   <MaterialCommunityIcons name="close" size={20} color="#999" />
               </TouchableOpacity>
           )}
-
         </View>
         
         <TouchableOpacity style={styles.cartButton} onPress={() => router.push('/(aux)/shop/cart' as any)}>
@@ -118,74 +118,80 @@ export default function Search() {
         </TouchableOpacity>
       </View>
 
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
-        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-          
-          {/* 🟢 LISTA DE SUGESTÕES DA API */}
-          {searchTerm.length > 0 && (
-              <>
-                {loadingSuggestions ? (
-                    <ActivityIndicator color={theme.colors.primary} style={{ marginTop: 20 }} />
-                ) : (
-                    suggestions.map((item) => (
-                        <TouchableOpacity 
-                            key={item.id} 
-                            style={styles.suggestionItem} 
-                            onPress={() => performSearch(item.title)}
-                        >
-                            <MaterialCommunityIcons name="magnify" size={20} color="#999" />
-                            <Text style={styles.suggestionText} numberOfLines={1}>
-                                {item.title}
-                            </Text>
-                            <MaterialCommunityIcons name="arrow-top-left" size={20} color="#ccc" style={{ marginLeft: 'auto' }} />
-                        </TouchableOpacity>
-                    ))
-                )}
-                
-                {/* Se digitou e não achou nada */}
-                {!loadingSuggestions && suggestions.length === 0 && searchTerm.length > 2 && (
-                     <View style={{ padding: 20, alignItems: 'center' }}>
-                        <Text style={{ color: '#999' }}>Nenhum resultado encontrado para "{searchTerm}"</Text>
-                     </View>
-                )}
-              </>
-          )}
+      {/* Container Branco para o conteúdo não ficar amarelo */}
+      <View style={styles.contentContainer}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
+            <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
+            
+            {/* 🟢 LISTA DE SUGESTÕES DA API */}
+            {searchTerm.length > 0 && (
+                <>
+                    {loadingSuggestions ? (
+                        <ActivityIndicator color={theme.colors.primary} style={{ marginTop: 20 }} />
+                    ) : (
+                        suggestions.map((item) => (
+                            <TouchableOpacity 
+                                key={item.id} 
+                                style={styles.suggestionItem} 
+                                onPress={() => performSearch(item.title)}
+                            >
+                                <MaterialCommunityIcons name="magnify" size={20} color="#999" />
+                                <Text style={styles.suggestionText} numberOfLines={1}>
+                                    {item.title}
+                                </Text>
+                                <MaterialCommunityIcons name="arrow-top-left" size={20} color="#ccc" style={{ marginLeft: 'auto' }} />
+                            </TouchableOpacity>
+                        ))
+                    )}
+                    
+                    {!loadingSuggestions && suggestions.length === 0 && searchTerm.length > 2 && (
+                        <View style={{ padding: 20, alignItems: 'center' }}>
+                            <Text style={{ color: '#999' }}>Nenhum resultado encontrado para "{searchTerm}"</Text>
+                        </View>
+                    )}
+                </>
+            )}
 
-          {/* 🟢 BUSCAS RECENTES (Só aparece se não estiver digitando) */}
-          {searchTerm.length === 0 && (
-              <>
-                <Text style={styles.sectionTitle}>Buscas recentes</Text>
-                <TouchableOpacity style={styles.recentItem} onPress={() => performSearch('Notebook')}>
-                    <MaterialCommunityIcons name="history" size={20} color="#999" />
-                    <Text style={styles.recentText}>Notebook Gamer</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.recentItem} onPress={() => performSearch('TV')}>
-                    <MaterialCommunityIcons name="history" size={20} color="#999" />
-                    <Text style={styles.recentText}>TV 4K</Text>
-                </TouchableOpacity>
-              </>
-          )}
-          
-        </ScrollView>
-      </KeyboardAvoidingView>
+            {/* 🟢 BUSCAS RECENTES */}
+            {searchTerm.length === 0 && (
+                <>
+                    <Text style={styles.sectionTitle}>Buscas recentes</Text>
+                    <TouchableOpacity style={styles.recentItem} onPress={() => performSearch('Notebook')}>
+                        <MaterialCommunityIcons name="history" size={20} color="#999" />
+                        <Text style={styles.recentText}>Notebook Gamer</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.recentItem} onPress={() => performSearch('TV')}>
+                        <MaterialCommunityIcons name="history" size={20} color="#999" />
+                        <Text style={styles.recentText}>TV 4K</Text>
+                    </TouchableOpacity>
+                </>
+            )}
+            
+            </ScrollView>
+        </KeyboardAvoidingView>
+      </View>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  safeArea: {
+    flex: 1,
+    backgroundColor: theme.colors.secondary,
+  },
+  contentContainer: {
     flex: 1,
     backgroundColor: '#fff',
-    paddingTop: Platform.OS === 'android' ? 30 : 0
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: theme.colors.secondary,
     paddingHorizontal: 10,
-    paddingVertical: 12
+    paddingBottom: 12,
+    paddingTop: 5,
   },
-  backButton: { padding: 5, marginRight: 8 },
+  backButton: { padding: 5, marginRight: 5 },
   searchBox: {
     flex: 1,
     flexDirection: 'row',
@@ -202,10 +208,12 @@ const styles = StyleSheet.create({
     marginLeft: 8,
     marginRight: 5,
     paddingVertical: 0, 
+    height: '100%',
   },
   clearButton: { padding: 5 },
   cartButton: { padding: 5, marginLeft: 10 },
-  content: { padding: 20 },
+  
+  scrollContent: { padding: 20 },
   sectionTitle: { fontSize: 14, fontWeight: 'bold', color: '#333', marginBottom: 15 },
   
   recentItem: {

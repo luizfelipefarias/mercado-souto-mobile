@@ -1,8 +1,19 @@
-import React, { useState, useCallback, useEffect } from 'react';
-import { View, FlatList, StyleSheet, TouchableOpacity, SafeAreaView, Platform, ActivityIndicator, Alert } from 'react-native';
+import React, { useState, useCallback } from 'react';
+import { 
+    View, 
+    FlatList, 
+    StyleSheet, 
+    TouchableOpacity, 
+    Platform, 
+    ActivityIndicator, 
+    Alert,
+    StatusBar 
+} from 'react-native';
 import { Text, FAB } from 'react-native-paper';
 import { useRouter, useFocusEffect } from 'expo-router';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { MaterialCommunityIcons, Ionicons } from '@expo/vector-icons';
+import { SafeAreaView } from 'react-native-safe-area-context'; 
+
 import { theme } from '../../../../src/constants/theme';
 import { useAuth } from '../../../../src/context/AuthContext';
 import api from '../../../../src/services/api';
@@ -20,7 +31,6 @@ interface AddressDisplay {
   complement?: string;
   additionalInfo?: string;
   home: boolean;
-  // 🔴 Removido city? e state?
 }
 
 export default function AddressList() {
@@ -31,14 +41,8 @@ export default function AddressList() {
   const [loading, setLoading] = useState(true);
   const [selectedAddressId, setSelectedAddressId] = useState<number | null>(null); 
 
-  // 1. Carregar endereço ativo do AsyncStorage na montagem
-  // NOTA: Movido para useFocusEffect para melhor sincronização após retorno de form
-  
   const fetchAddresses = useCallback(async (currentSelectedId: number | null) => {
     setLoading(true);
-    
-    // --- 1. Lógica de Carregamento de Endereços (Guest/API) ---
-
     let fetchedAddresses: AddressDisplay[] = [];
 
     if (isGuest) {
@@ -67,27 +71,18 @@ export default function AddressList() {
     
     setAddresses(fetchedAddresses);
 
-    // --- 2. Lógica de Seleção Ativa ---
-
-    // 🟢 Se o ID atual não é válido OU está nulo, e existe um endereço, 
-    // tentamos selecionar o primeiro.
     const isIdValid = fetchedAddresses.some(addr => addr.id === currentSelectedId);
-    
     if (!currentSelectedId || !isIdValid) {
         if (fetchedAddresses.length > 0) {
             handleSelectAddress(fetchedAddresses[0].id);
         }
     }
-
     setLoading(false);
   }, [user, isGuest]);
 
-  // 🟢 useFocusEffect: Sincroniza o ID ativo E busca os endereços sempre que a tela entra em foco
   useFocusEffect(
     useCallback(() => {
         let currentSelectedId: number | null = null;
-
-        // 1. LÊ O ENDEREÇO ATIVO SALVO
         AsyncStorage.getItem(SELECTED_ADDRESS_KEY).then(id => {
             if (id) {
                 currentSelectedId = Number(id);
@@ -95,42 +90,27 @@ export default function AddressList() {
             } else {
                 setSelectedAddressId(null);
             }
-            
-            // 2. BUSCA A LISTA E TENTA SINCRONIZAR A SELEÇÃO
             fetchAddresses(currentSelectedId);
         });
-
     }, [fetchAddresses])
   );
   
-  // Função para marcar o endereço como ativo
   const handleSelectAddress = async (id: number) => {
       setSelectedAddressId(id);
-      // ✅ SALVA O ID ATIVO PARA O CHECKOUT LER
       await AsyncStorage.setItem(SELECTED_ADDRESS_KEY, id.toString());
       Toast.show({ type: 'info', text1: 'Endereço de entrega selecionado.' });
   };
 
-
   const handleNavigateToForm = (address?: AddressDisplay) => {
       router.push({
-          pathname: '/(aux)/account/address/form',
+          pathname: '/(aux)/account/address/form', 
           params: address ? { address: JSON.stringify(address) } : undefined
       } as any);
   };
 
   const handleRemove = async (id: number) => {
-    
-    // 1. Confirmação do usuário 
-    const confirmDelete = Platform.OS === 'web' 
-        ? window.confirm("Tem certeza que deseja remover este endereço?")
-        : true;
-
-    if (!confirmDelete && Platform.OS === 'web') return;
-    
     const performRemoval = async () => {
         if (isGuest) {
-            // REMOÇÃO GUEST (ASYNC STORAGE)
             try {
                 const storedAddresses = await AsyncStorage.getItem(GUEST_ADDRESS_KEY);
                 if (storedAddresses) {
@@ -139,60 +119,53 @@ export default function AddressList() {
                     await AsyncStorage.setItem(GUEST_ADDRESS_KEY, JSON.stringify(updatedAddresses));
                     Toast.show({ type: 'success', text1: 'Endereço removido (Local).' });
                     
-                    // Se remover o endereço ativo, desmarca
                     if (selectedAddressId === id) {
                         setSelectedAddressId(null);
                         await AsyncStorage.removeItem(SELECTED_ADDRESS_KEY);
                     }
-                    fetchAddresses(null); // Atualiza a lista
+                    fetchAddresses(null);
                 }
             } catch (e) {
                 Toast.show({ type: 'error', text1: 'Erro ao remover localmente.' });
             }
         } else {
-            // REMOÇÃO LOGADO (API)
             try {
                 await api.delete(`/api/address/${id}`);
                 Toast.show({ type: 'success', text1: 'Endereço removido.' });
-                // Se remover o endereço ativo, desmarca
                 if (selectedAddressId === id) {
                     setSelectedAddressId(null);
                     await AsyncStorage.removeItem(SELECTED_ADDRESS_KEY);
                 }
-                fetchAddresses(null); // Atualiza a lista
+                fetchAddresses(null);
             } catch (error) {
                 Toast.show({ type: 'error', text1: 'Erro ao remover API.' });
             }
         }
     };
 
-
     if (Platform.OS !== 'web') {
         Alert.alert("Remover", "Tem certeza que deseja remover este endereço?", [
             { text: "Cancelar", style: "cancel" },
             { text: "Remover", style: "destructive", onPress: performRemoval }
         ]);
-        return;
-    }
-
-    if (confirmDelete && Platform.OS === 'web') {
-        performRemoval();
+    } else {
+        if (window.confirm("Tem certeza que deseja remover este endereço?")) {
+            performRemoval();
+        }
     }
   };
-
 
   const renderItem = ({ item }: { item: AddressDisplay }) => {
     const isSelected = item.id === selectedAddressId;
 
     return (
-        // Clicar no CARD SELECIONA O ENDEREÇO
         <TouchableOpacity 
             onPress={() => handleSelectAddress(item.id)} 
             style={[styles.card, isSelected && styles.selectedCard]}
+            activeOpacity={0.8}
         >
           <View style={styles.cardContent}>
             <View style={styles.iconColumn}>
-              {/* ÍCONE DE SELEÇÃO */}
               <MaterialCommunityIcons 
                   name={isSelected ? "check-circle" : "map-marker-outline"} 
                   size={28} 
@@ -204,23 +177,20 @@ export default function AddressList() {
               <Text style={styles.label}>
                 {item.street || 'Rua sem nome'}, {item.number}
               </Text>
-              
-              {/* EXIBIÇÃO SIMPLIFICADA: Foca em Bairro (additionalInfo) e CEP */}
               <Text style={styles.text}>
                 {item.additionalInfo ? `${item.additionalInfo}` : 'Bairro/Região'}
               </Text>
-              
               <Text style={styles.zip}>CEP: {item.cep}</Text>
             </View>
             
-            {/* BOTão DE EDIÇÃO */}
-            <TouchableOpacity style={styles.editButton} onPress={() => handleNavigateToForm(item)}>
-                 <MaterialCommunityIcons name="pencil-outline" size={20} color="#3483fa" />
+            {/* BOTÃO EDITAR */}
+            <TouchableOpacity style={styles.actionButton} onPress={() => handleNavigateToForm(item)}>
+                 <MaterialCommunityIcons name="pencil-outline" size={22} color={theme.colors.primary} />
             </TouchableOpacity>
 
-            {/* Botão de Remover (X) */}
-            <TouchableOpacity style={styles.removeButton} onPress={() => handleRemove(item.id)}>
-                 <MaterialCommunityIcons name="close" size={20} color="#999" />
+            {/* BOTÃO REMOVER */}
+            <TouchableOpacity style={styles.actionButton} onPress={() => handleRemove(item.id)}>
+                 <Ionicons name="trash-outline" size={22} color="#999" />
             </TouchableOpacity>
           </View>
         </TouchableOpacity>
@@ -228,14 +198,15 @@ export default function AddressList() {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.safeArea} edges={['top']}>
+      <StatusBar barStyle="dark-content" backgroundColor={theme.colors.secondary} />
+
       <View style={styles.header}>
-        {/* Fallback seguro para router.back() */}
         <TouchableOpacity 
           onPress={() => router.canGoBack() ? router.back() : router.replace('/(tabs)')} 
           style={{ padding: 5 }}
         >
-          <MaterialCommunityIcons name="arrow-left" size={24} color="#333" />
+          <Ionicons name="arrow-back" size={24} color="#333" />
         </TouchableOpacity>
 
         <Text style={styles.headerTitle}>Meus endereços</Text>
@@ -243,36 +214,35 @@ export default function AddressList() {
         <View style={{ width: 34 }} />
       </View>
 
-      {loading ? (
-        <ActivityIndicator style={{ marginTop: 50 }} color={theme.colors.primary} size="large" />
-      ) : (
-        <FlatList
-          data={addresses}
-          renderItem={renderItem}
-          keyExtractor={(item: any) => item.id ? item.id.toString() : Math.random().toString()}
-          contentContainerStyle={{ padding: 15, paddingBottom: 80 }}
-          ListEmptyComponent={
-            <View style={styles.emptyContainer}>
-                <MaterialCommunityIcons name="map-marker-off-outline" size={48} color="#ccc" />
-                <Text style={styles.emptyText}>Nenhum endereço cadastrado.</Text>
-                
-                {isGuest && ( 
-                     <Text style={{color: '#999', marginTop: 10}}>Endereços salvos localmente para esta sessão.</Text>
-                )}
-                {!isGuest && (
-                     <Text style={{color: '#999', marginTop: 10}}>Comece adicionando seu primeiro endereço.</Text>
-                )}
-            </View>
-          }
-        />
-      )}
+      <View style={styles.container}>
+        {loading ? (
+            <ActivityIndicator style={{ marginTop: 50 }} color={theme.colors.primary} size="large" />
+        ) : (
+            <FlatList
+            data={addresses}
+            renderItem={renderItem}
+            keyExtractor={(item: any) => item.id ? item.id.toString() : Math.random().toString()}
+            contentContainerStyle={{ padding: 15, paddingBottom: 80 }}
+            ListEmptyComponent={
+                <View style={styles.emptyContainer}>
+                    <MaterialCommunityIcons name="map-marker-off-outline" size={48} color="#ccc" />
+                    <Text style={styles.emptyText}>Nenhum endereço cadastrado.</Text>
+                    <Text style={{color: '#999', marginTop: 10, textAlign:'center'}}>
+                        {isGuest 
+                            ? "Endereços salvos localmente para esta sessão." 
+                            : "Adicione um endereço para agilizar suas compras."}
+                    </Text>
+                </View>
+            }
+            />
+        )}
+      </View>
 
-      {/* FAB aparece para todos (Logado ou Guest) */}
       <FAB
           style={styles.fab}
           icon="plus"
           color="#fff"
-          label="Adicionar"
+          label={addresses.length === 0 ? "Adicionar Endereço" : ""}
           onPress={() => handleNavigateToForm()}
       />
     </SafeAreaView>
@@ -280,57 +250,47 @@ export default function AddressList() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f5f5f5', paddingTop: Platform.OS === 'android' ? 30 : 0 },
-
+  safeArea: { 
+      flex: 1, 
+      backgroundColor: theme.colors.secondary 
+  },
+  container: { 
+      flex: 1, 
+      backgroundColor: '#f5f5f5' 
+  },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 15,
+    paddingHorizontal: 15,
+    paddingVertical: 10,
     backgroundColor: theme.colors.secondary,
-    elevation: 2,
+    elevation: 2, 
+    shadowColor: '#000', 
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
   },
-
   headerTitle: { fontSize: 18, fontWeight: '500', color: '#333' },
-
   card: {
     backgroundColor: '#fff',
     marginBottom: 15,
     borderRadius: 8,
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOpacity: 0.1,
-    shadowOffset: { width: 0, height: 2 },
-    flexDirection: 'row',
-    alignItems: 'center',
-    overflow: 'hidden',
+    elevation: 1,
     borderWidth: 1, 
     borderColor: 'transparent',
   },
   selectedCard: {
       borderColor: theme.colors.primary,
-      backgroundColor: '#f0f4f9', 
+      backgroundColor: '#f9fcff', 
   },
-
-  cardContent: { flex: 1, flexDirection: 'row', padding: 15, alignItems: 'center' },
+  cardContent: { flexDirection: 'row', padding: 15, alignItems: 'center' },
   iconColumn: { marginRight: 15 },
   infoColumn: { flex: 1 },
-
   label: { fontSize: 16, fontWeight: 'bold', marginBottom: 4, color: '#333' },
   text: { color: '#666', fontSize: 14, marginBottom: 2 },
   zip: { color: '#999', fontSize: 12, marginTop: 2 },
-
-  editButton: {
-    padding: 5,
-    marginLeft: 10,
-    marginRight: 0,
-  },
-
-  removeButton: {
-    padding: 5,
-    marginLeft: 5,
-  },
-
+  actionButton: { padding: 8, marginLeft: 5 },
   fab: {
     position: 'absolute',
     margin: 16,
@@ -338,7 +298,6 @@ const styles = StyleSheet.create({
     bottom: 0,
     backgroundColor: theme.colors.primary,
   },
-
-  emptyContainer: { alignItems: 'center', marginTop: 50 },
-  emptyText: { textAlign: 'center', marginTop: 10, color: '#999', fontSize: 16 }
+  emptyContainer: { alignItems: 'center', marginTop: 60, paddingHorizontal: 20 },
+  emptyText: { textAlign: 'center', marginTop: 15, color: '#666', fontSize: 16, fontWeight: 'bold' }
 });
