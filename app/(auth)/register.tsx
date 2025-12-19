@@ -22,12 +22,41 @@ import { theme } from '../../src/constants/theme';
 import { useAuth } from '../../src/context/AuthContext';
 
 const GENERIC_TERMS = `
-TERMOS DE USO E POLÍTICA DE PRIVACIDADE
+TERMOS DE USO E POLÍTICA DE PRIVACIDADE - MERCADO SOUTO
+
+Última atualização: 19 de Dezembro de 2025
 
 1. ACEITAÇÃO DOS TERMOS
-Ao criar uma conta no Mercado Souto, você concorda com os presentes termos...
-(Seu texto dos termos aqui)
-...
+Ao criar uma conta e utilizar o aplicativo Mercado Souto, você concorda expressamente com estes Termos de Uso e com nossa Política de Privacidade. Se você não concordar com qualquer parte destes termos, não deverá utilizar nossos serviços.
+
+2. CADASTRO E SEGURANÇA
+2.1. Para comprar no aplicativo, é necessário preencher o cadastro com informações exatas, precisas e verdadeiras (Nome, CPF, Endereço, Telefone).
+2.2. Você é responsável por manter a confidencialidade de sua senha e login. Qualquer atividade realizada com sua conta é de sua inteira responsabilidade.
+2.3. O Mercado Souto reserva-se o direito de suspender ou cancelar contas que violem estes termos ou apresentem suspeita de fraude.
+
+3. PRIVACIDADE E DADOS (LGPD)
+3.1. Coletamos seus dados pessoais apenas para fins de: processamento de pedidos, emissão de nota fiscal, entrega de produtos e comunicação sobre o status da compra.
+3.2. Seus dados não serão vendidos a terceiros. Compartilhamos apenas o necessário com parceiros logísticos para realizar a entrega.
+3.3. Você pode solicitar a exclusão ou alteração dos seus dados a qualquer momento através do suporte.
+
+4. COMPRAS E PAGAMENTOS
+4.1. A inclusão de um produto no carrinho não garante sua reserva ou preço. A compra só é confirmada após a finalização do pedido e aprovação do pagamento.
+4.2. Os preços e estoques estão sujeitos a alterações sem aviso prévio.
+
+5. ENTREGAS
+5.1. O prazo de entrega informado é uma estimativa e pode variar dependendo da região e de fatores logísticos externos.
+5.2. É necessário ter alguém no local para receber o pedido. Após 3 tentativas frustradas, o pedido retornará ao centro de distribuição.
+
+6. DIREITO DE ARREPENDIMENTO E TROCAS (CDC)
+6.1. Conforme o Art. 49 do Código de Defesa do Consumidor, você tem o direito de desistir da compra em até 7 (sete) dias corridos após o recebimento do produto.
+6.2. Para trocas por defeito, o prazo é de 30 dias para bens não duráveis e 90 dias para bens duráveis.
+
+7. PROPRIEDADE INTELECTUAL
+Todo o design, código-fonte, logotipos e conteúdo do aplicativo Mercado Souto são de propriedade exclusiva da empresa e protegidos pela lei de direitos autorais.
+
+8. CONTATO
+Em caso de dúvidas, problemas com pedidos ou solicitações legais, entre em contato através do email: suporte@mercadosouto.com.br
+
 `;
 
 export default function Register() {
