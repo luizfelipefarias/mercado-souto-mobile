@@ -16,40 +16,52 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { theme } from '../../../../src/constants/theme';
 import Toast from 'react-native-toast-message';
 
+import { useAuth } from '../../../../src/context/AuthContext';
+
 export default function Security() {
   const router = useRouter();
+  const { signOut } = useAuth();
 
   const [biometrics, setBiometrics] = useState(true);
   const [twoFactor, setTwoFactor] = useState(false);
+
+  const isWeb = Platform.OS === 'web';
+  const currentDeviceIcon = isWeb ? 'monitor' : 'cellphone'; 
+  const currentDeviceName = isWeb ? 'Navegador Web' : `App ${Platform.OS === 'ios' ? 'iOS' : 'Android'}`;
 
   const handleChangePassword = () => {
     router.push('/(aux)/account/profile/change-password' as any);
   };
 
   const handleLogoutDevices = () => {
-    const message = 'Você precisará fazer login novamente em todos os dispositivos. Deseja continuar?';
+    const message = 'Você será desconectado da sua conta. Deseja continuar?';
     
-    const performLogoutAction = () => {
-        Toast.show({ 
-            type: 'success', 
-            text1: 'Desconexão Concluída', 
-            text2: 'Você foi desconectado de todos os outros dispositivos com sucesso.',
-            visibilityTime: 3000
-        });
+    const performLogoutAction = async () => {
+        try {
+            await signOut();
+            Toast.show({ 
+                type: 'success', 
+                text1: 'Desconectado', 
+                text2: 'Saindo da conta...',
+                visibilityTime: 2000
+            });
+        } catch (error) {
+            console.log("Erro ao sair", error);
+        }
     };
 
-    if (Platform.OS === 'web') {
+    if (isWeb) {
         if (window.confirm(message)) {
             performLogoutAction();
         }
     } else {
         Alert.alert(
-          'Desconectar tudo',
+          'Desconectar',
           message,
           [
             { text: 'Cancelar', style: 'cancel' },
             { 
-              text: 'Sim, desconectar', 
+              text: 'Sim, sair agora', 
               style: 'destructive',
               onPress: performLogoutAction
             }
@@ -85,31 +97,33 @@ export default function Security() {
               Recomendado trocar periodicamente
             </Text>
           </View>
-
           <MaterialCommunityIcons name="chevron-right" size={24} color="#ccc" />
         </TouchableOpacity>
 
-        <View style={styles.item}>
-          <View>
-            <Text style={styles.itemTitle}>Biometria / FaceID</Text>
-            <Text style={styles.itemSub}>Usar para entrar no app</Text>
-          </View>
+        {/* Biometria só faz sentido em Mobile, podemos esconder na Web se quiser */}
+        {!isWeb && (
+            <View style={styles.item}>
+            <View>
+                <Text style={styles.itemTitle}>Biometria / FaceID</Text>
+                <Text style={styles.itemSub}>Usar para entrar no app</Text>
+            </View>
 
-          <Switch
-            value={biometrics}
-            onValueChange={(value) => {
-              setBiometrics(value);
-              Toast.show({
-                  type: 'info',
-                  text1: 'Preferência Salva',
-                  text2: value ? 'Biometria ativada.' : 'Biometria desativada.',
-                  visibilityTime: 2000
-              });
-            }}
-            trackColor={{ false: '#767577', true: theme.colors.primary }}
-            thumbColor={Platform.OS === 'android' ? '#f4f3f4' : ''}
-          />
-        </View>
+            <Switch
+                value={biometrics}
+                onValueChange={(value) => {
+                setBiometrics(value);
+                Toast.show({
+                    type: 'info',
+                    text1: 'Preferência Salva',
+                    text2: value ? 'Biometria ativada.' : 'Biometria desativada.',
+                    visibilityTime: 2000
+                });
+                }}
+                trackColor={{ false: '#767577', true: theme.colors.primary }}
+                thumbColor={Platform.OS === 'android' ? '#f4f3f4' : ''}
+            />
+            </View>
+        )}
 
         <View style={styles.item}>
           <View style={{ maxWidth: '80%' }}>
@@ -137,13 +151,14 @@ export default function Security() {
 
         <Text style={styles.sectionTitle}>Dispositivos Ativos</Text>
 
+        {/* --- CARD DINÂMICO DO DISPOSITIVO ATUAL --- */}
         <View style={styles.deviceCard}>
-          <MaterialCommunityIcons name="cellphone" size={30} color="#333" />
+          <MaterialCommunityIcons name={currentDeviceIcon as any} size={30} color="#333" />
 
           <View style={{ marginLeft: 15, flex: 1 }}>
             <Text style={{ fontWeight: 'bold' }}>Este dispositivo</Text>
             <Text style={{ color: '#666', fontSize: 12 }}>
-              App Mobile • Atual
+              {currentDeviceName} • Atual
             </Text>
           </View>
 
@@ -152,13 +167,14 @@ export default function Security() {
           </Text>
         </View>
 
+        {/* --- CARD ESTÁTICO DE EXEMPLO (Oposto ao atual) --- */}
         <View style={[styles.deviceCard, { opacity: 0.6 }]}>
-          <MaterialCommunityIcons name="laptop" size={30} color="#333" />
+          <MaterialCommunityIcons name={isWeb ? "cellphone" : "laptop"} size={30} color="#333" />
 
           <View style={{ marginLeft: 15, flex: 1 }}>
-            <Text style={{ fontWeight: 'bold' }}>Windows PC</Text>
+            <Text style={{ fontWeight: 'bold' }}>{isWeb ? "iPhone 13" : "Windows PC"}</Text>
             <Text style={{ color: '#666', fontSize: 12 }}>
-              Chrome • São Paulo, BR
+              {isWeb ? "App Mobile" : "Chrome"} • São Paulo, BR
             </Text>
           </View>
 
@@ -170,7 +186,7 @@ export default function Security() {
           onPress={handleLogoutDevices}
         >
           <Text style={styles.dangerText}>
-            Desconectar todos os dispositivos
+            Sair da conta
           </Text>
         </TouchableOpacity>
       </ScrollView>
@@ -184,7 +200,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#f5f5f5',
     paddingTop: Platform.OS === 'android' ? 30 : 0
   },
-
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -192,16 +207,13 @@ const styles = StyleSheet.create({
     padding: 15,
     backgroundColor: theme.colors.secondary
   },
-
   headerTitle: {
     fontSize: 18,
     fontWeight: '500'
   },
-
   content: {
     padding: 20
   },
-
   sectionTitle: {
     fontSize: 14,
     fontWeight: 'bold',
@@ -210,7 +222,6 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     textTransform: 'uppercase'
   },
-
   item: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -221,18 +232,15 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     elevation: 1
   },
-
   itemTitle: {
     fontSize: 16,
     color: '#333'
   },
-
   itemSub: {
     fontSize: 12,
     color: '#888',
     marginTop: 2
   },
-
   deviceCard: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -242,16 +250,15 @@ const styles = StyleSheet.create({
     borderColor: '#eee',
     marginBottom: 5
   },
-
   dangerButton: {
     marginTop: 30,
     alignItems: 'center',
     padding: 15,
     borderWidth: 1,
     borderColor: '#ff3e3e',
-    borderRadius: 8
+    borderRadius: 8,
+    backgroundColor: '#fff'
   },
-
   dangerText: {
     color: '#ff3e3e',
     fontWeight: 'bold'

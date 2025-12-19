@@ -63,7 +63,6 @@ function RootNavigation() {
       
       <Stack.Screen name="(aux)/account/profile/edit" />
       <Stack.Screen name="(aux)/account/profile/security" />
-      <Stack.Screen name="(aux)/account/profile/privacy" />
       <Stack.Screen name="(aux)/account/profile/change-password" />
 
       <Stack.Screen name="(aux)/account/address/index" />

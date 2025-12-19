@@ -53,7 +53,6 @@ export default function Menu() {
                 { label: 'Meu perfil', icon: 'account-outline', route: '/(aux)/account/profile' },
                 { label: 'Endereços', icon: 'map-marker-outline', route: '/(aux)/account/address' },
                 { label: 'Segurança', icon: 'shield-check-outline', route: '/(aux)/account/profile/security' },
-                { label: 'Privacidade', icon: 'lock-outline', route: '/(aux)/account/profile/privacy' },
             ]
         },
         {
@@ -112,7 +111,7 @@ export default function Menu() {
                 </TouchableOpacity>
             </View>
 
-            {/* 🟢 Adicionado flex: 1 ao ScrollView para garantir que ele ocupe o espaço restante */}
+
             <ScrollView 
                 showsVerticalScrollIndicator={false} 
                 contentContainerStyle={styles.scrollContent}

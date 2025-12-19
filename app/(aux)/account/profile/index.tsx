@@ -42,8 +42,6 @@ export default function Profile() {
       
       { label: 'Endereços', icon: 'map-marker-outline', route: '/(aux)/account/address' },
       
-      { label: 'Privacidade', icon: 'lock-outline', route: '/(aux)/account/profile/privacy' },
-
     ],
     []
   );

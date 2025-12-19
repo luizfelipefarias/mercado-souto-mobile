@@ -8,7 +8,6 @@ import {
     ActivityIndicator, 
     Alert, 
     StatusBar, 
-    SafeAreaView, 
     Platform,
     FlatList,
     Dimensions,
@@ -32,6 +31,9 @@ import CartIcon from '@/components/CartIcon';
 import Toast from 'react-native-toast-message';
 import AsyncStorage from '@react-native-async-storage/async-storage'; 
 
+import { SafeAreaView } from 'react-native-safe-area-context';
+
+import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import Animated, { 
     useSharedValue, 
     useAnimatedStyle, 
@@ -39,18 +41,109 @@ import Animated, {
     withSequence, 
     runOnJS, 
     Easing,
-    interpolate
+    cancelAnimation,
+    withSpring
 } from 'react-native-reanimated';
 
 import { Address } from '@/interfaces'; 
 
-const { width } = Dimensions.get('window');
+const { width, height } = Dimensions.get('window');
 const CAROUSEL_WIDTH = width - 30; 
-const ANIMATION_DURATION = 800; 
-const MINIATURE_SIZE = 80;      
+
+const MINIATURE_SIZE = 150;      
 
 const SELECTED_ADDRESS_KEY = '@selected_address_id'; 
 const GUEST_ADDRESS_KEY = '@guest_addresses';
+
+const ZoomableImage = ({ uri }: { uri: string }) => {
+    const scale = useSharedValue(1);
+    const savedScale = useSharedValue(1);
+    
+    const translateX = useSharedValue(0);
+    const savedTranslateX = useSharedValue(0);
+    
+    const translateY = useSharedValue(0);
+    const savedTranslateY = useSharedValue(0);
+
+    const pinch = Gesture.Pinch()
+        .onUpdate((e) => {
+            scale.value = savedScale.value * e.scale;
+        })
+        .onEnd(() => {
+            if (scale.value < 1) {
+                scale.value = withTiming(1);
+                translateX.value = withTiming(0);
+                translateY.value = withTiming(0);
+                savedScale.value = 1;
+                savedTranslateX.value = 0;
+                savedTranslateY.value = 0;
+            } else if (scale.value > 3) {
+                scale.value = withTiming(3);
+                savedScale.value = 3;
+            } else {
+                savedScale.value = scale.value;
+            }
+        });
+
+    const pan = Gesture.Pan()
+        .averageTouches(true)
+        .onUpdate((e) => {
+            if (scale.value > 1) {
+                translateX.value = savedTranslateX.value + e.translationX;
+                translateY.value = savedTranslateY.value + e.translationY;
+            }
+        })
+        .onEnd(() => {
+            savedTranslateX.value = translateX.value;
+            savedTranslateY.value = translateY.value;
+            
+            if (scale.value === 1) {
+                 translateX.value = withTiming(0);
+                 translateY.value = withTiming(0);
+            }
+        });
+
+    const doubleTap = Gesture.Tap()
+        .numberOfTaps(2)
+        .onEnd(() => {
+            if (scale.value > 1) {
+                scale.value = withTiming(1);
+                translateX.value = withTiming(0);
+                translateY.value = withTiming(0);
+                savedScale.value = 1;
+                savedTranslateX.value = 0;
+                savedTranslateY.value = 0;
+            } else {
+                scale.value = withTiming(2);
+                savedScale.value = 2;
+            }
+        });
+
+    const composed = Gesture.Simultaneous(pinch, pan, doubleTap);
+
+    const animatedStyle = useAnimatedStyle(() => {
+        return {
+            transform: [
+                { translateX: translateX.value },
+                { translateY: translateY.value },
+                { scale: scale.value }
+            ],
+            zIndex: scale.value > 1 ? 999 : 1, 
+        };
+    });
+
+    return (
+        <GestureDetector gesture={composed}>
+            <View style={styles.carouselItem}>
+                <Animated.Image 
+                    source={{ uri }} 
+                    style={[styles.productImage, animatedStyle]} 
+                    resizeMode="contain" 
+                />
+            </View>
+        </GestureDetector>
+    );
+};
 
 type ProductDetail = {
     id: number;
@@ -104,23 +197,26 @@ export default function ProductDetails() {
 
     const totalItems = cartItems.reduce((acc, item) => acc + (item.quantity || 1), 0);
 
-    const flyX = useSharedValue(0); 
-    const flyY = useSharedValue(0);
-    const flyScale = useSharedValue(0); 
-    const flyOpacity = useSharedValue(0);
-    const flyRotation = useSharedValue(0);
+    const popupScale = useSharedValue(0);
+    const popupOpacity = useSharedValue(0);
 
     useAndroidNavigationBar(true);
+
+    const handleBackSafe = () => {
+        if (router.canGoBack()) {
+            router.back();
+        } else {
+            router.replace('/(tabs)/home' as any);
+        }
+    };
 
     const fetchActiveAddress = useCallback(async () => {
         setLoadingLocation(true);
         let addresses: ActiveAddress[] = [];
         let selectedId: number | null = null;
-
         try {
             const selectedIdString = await AsyncStorage.getItem(SELECTED_ADDRESS_KEY);
             selectedId = selectedIdString ? Number(selectedIdString) : null;
-
             if (isGuest) {
                 const stored = await AsyncStorage.getItem(GUEST_ADDRESS_KEY);
                 if (stored) addresses = JSON.parse(stored) as ActiveAddress[]; 
@@ -133,12 +229,10 @@ export default function ProductDetails() {
                     neighborhood: addr.additionalInfo || addr.neighborhood,
                 })) as ActiveAddress[];
             }
-
             const foundAddress = addresses.find(addr => addr.id === selectedId);
             setActiveAddress(foundAddress || null);
-
         } catch (e) {
-            console.error("Erro ao buscar endereço ativo:", e);
+            console.error(e);
             setActiveAddress(null);
         } finally {
             setLoadingLocation(false);
@@ -155,13 +249,10 @@ export default function ProductDetails() {
         const fetchProductDetails = async () => {
             if (!id || isNaN(Number(id))) {
                 setTimeout(() => {
-                    Alert.alert("Erro", "Produto inválido ou não encontrado.", [
-                        { text: "OK", onPress: () => { router.canGoBack() ? router.back() : router.replace('/(tabs)/home' as any); } }
-                    ]);
+                    Alert.alert("Erro", "Produto inválido ou não encontrado.", [{ text: "OK", onPress: handleBackSafe }]);
                 }, 100); 
                 return;
             }
-
             setLoading(true);
             try {
                 const response = await api.get(`/api/product/${id}`);
@@ -175,25 +266,20 @@ export default function ProductDetails() {
                     stock: data.stock
                 };
                 setProduct(newProduct);
-
                 addToHistory({
                     id: newProduct.id,
                     title: newProduct.name,
                     price: newProduct.price,
                     image: newProduct.images[0] || 'placeholder'
                 });
-
             } catch (error) {
                 setTimeout(() => {
-                    Alert.alert("Ops!", "Produto não encontrado.", [
-                        { text: "OK", onPress: () => router.back() }
-                    ]);
+                    Alert.alert("Ops!", "Produto não encontrado.", [{ text: "OK", onPress: handleBackSafe }]);
                 }, 100);
             } finally {
                 setLoading(false);
             }
         };
-
         fetchProductDetails();
     }, [id]);
 
@@ -213,56 +299,36 @@ export default function ProductDetails() {
         return 'Selecione um endereço para calcular o frete.';
     };
 
-    const flyingStyle = useAnimatedStyle(() => {
-        const rotateZ = `${interpolate(flyRotation.value, [0, 1], [0, 360])}deg`;
+    const popupStyle = useAnimatedStyle(() => {
         return {
             position: 'absolute',
             width: MINIATURE_SIZE,
             height: MINIATURE_SIZE,
             zIndex: 9999,
-            top: 0,
-            left: 0,
-            opacity: flyOpacity.value,
-            borderRadius: MINIATURE_SIZE / 2,
+            top: (height / 2) - (MINIATURE_SIZE / 2),
+            left: (width / 2) - (MINIATURE_SIZE / 2),
+            opacity: popupOpacity.value,
+            transform: [{ scale: popupScale.value }],
+            borderRadius: 12,
             borderWidth: 3,       
             borderColor: '#fff',
             shadowColor: "#000",
             shadowOffset: { width: 0, height: 4 },
             shadowOpacity: 0.3,
             shadowRadius: 4.65,
-            elevation: 8,
+            elevation: 10,
             pointerEvents: 'none', 
-            transform: [
-                { translateX: flyX.value },
-                { translateY: flyY.value },
-                { scale: flyScale.value },
-                { rotateZ: rotateZ } 
-            ]
         };
     });
 
-    const triggerFlyAnimation = (callback: () => void) => {
-        const startX = width / 2 - (MINIATURE_SIZE / 2);
-        const startY = 300; 
-        const destX = width - 60; 
-        const destY = Platform.OS === 'ios' ? 50 : 25;
-
-        flyX.value = startX;
-        flyY.value = startY;
-        flyScale.value = 0.3; 
-        flyOpacity.value = 1;
-        flyRotation.value = 0;
-
-        flyX.value = withTiming(destX, { duration: ANIMATION_DURATION, easing: Easing.bezier(0.33, 1, 0.68, 1) });
-        flyY.value = withTiming(destY, { duration: ANIMATION_DURATION, easing: Easing.out(Easing.exp) });
-        flyScale.value = withSequence(
-            withTiming(1.2, { duration: ANIMATION_DURATION * 0.3 }),
-            withTiming(0.4, { duration: ANIMATION_DURATION * 0.7 }) 
-        );
-        flyRotation.value = withTiming(1, { duration: ANIMATION_DURATION });
-        flyOpacity.value = withSequence(
-            withTiming(1, { duration: ANIMATION_DURATION * 0.8 }),
-            withTiming(0, { duration: ANIMATION_DURATION * 0.2 }, (finished) => {
+    const triggerPopupAnimation = (callback: () => void) => {
+        popupScale.value = 0.5;
+        popupOpacity.value = 0;
+        popupOpacity.value = withTiming(1, { duration: 200 });
+        popupScale.value = withSequence(
+            withTiming(1.2, { duration: 300, easing: Easing.out(Easing.exp) }),
+            withTiming(1, { duration: 200 }), 
+            withTiming(0, { duration: 300 }, (finished) => {
                 if (finished) runOnJS(callback)();
             })
         );
@@ -275,7 +341,6 @@ export default function ProductDetails() {
             router.push('/(auth)/login' as any);
             return;
         }
-        
         const itemToAdd: LocalCartItem = {
             id: product.id,
             name: product.name,
@@ -304,8 +369,7 @@ export default function ProductDetails() {
 
     const handleAddToCart = () => {
         if (!product) return;
-        
-        triggerFlyAnimation(() => {
+        triggerPopupAnimation(() => {
             const itemToAdd: LocalCartItem = {
                 id: product.id,
                 name: product.name,
@@ -315,6 +379,7 @@ export default function ProductDetails() {
                 shipping: 0 
             };
             addToCart(itemToAdd as any); 
+            Toast.show({ type: 'success', text1: 'Adicionado ao carrinho!', visibilityTime: 1500 });
         });
     };
 
@@ -334,170 +399,162 @@ export default function ProductDetails() {
     const quantityOptions = Array.from({ length: maxQuantity }, (_, i) => i + 1);
 
     return (
-        <View style={styles.container}>
-            <StatusBar barStyle="dark-content" backgroundColor={theme.colors.secondary} translucent={false} />
-            
-            {/* Imagem Animada (Escondida até disparar) */}
-            {product.images.length > 0 && (
-                <Animated.Image 
-                    source={{ uri: product.images[0] }} 
-                    style={flyingStyle} 
-                    resizeMode="cover"
-                />
-            )}
+        <GestureHandlerRootView style={{ flex: 1 }}>
+            <View style={styles.container}>
+                <StatusBar barStyle="dark-content" backgroundColor={theme.colors.secondary} translucent={false} />
+                
+                {product.images.length > 0 && (
+                    <Animated.Image 
+                        source={{ uri: product.images[0] }} 
+                        style={popupStyle} 
+                        resizeMode="cover"
+                    />
+                )}
 
-            {/* Header Amarelo */}
-            <SafeAreaView style={styles.headerSafeArea}>
-                <View style={styles.headerContent}>
-                    <TouchableOpacity onPress={() => router.back()} style={styles.backButtonHeader}>
-                        <MaterialCommunityIcons name="arrow-left" size={24} color="#333" />
-                    </TouchableOpacity>
-                    <TouchableOpacity style={styles.searchBarHeader} onPress={() => router.push('/(aux)/misc/search' as any)}>
-                        <MaterialCommunityIcons name="magnify" size={20} color="#999" style={styles.searchIcon} />
-                        <Text style={styles.searchTextHeader} numberOfLines={1}>Buscar no Mercado Souto</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity style={[styles.cartButtonHeader, { zIndex: 20 }]} onPress={() => router.push('/(aux)/shop/cart' as any)}>
-                        <CartIcon itemCount={totalItems} />
-                    </TouchableOpacity>
-                </View>
-                <View style={styles.locationBar}>
-                    <MaterialCommunityIcons name="map-marker-outline" size={14} color="#333" />
-                    <Text style={styles.locationText} numberOfLines={1}>{getAddressText()}</Text>
-                    <TouchableOpacity onPress={() => router.push('/(aux)/account/address' as any)}>
-                         <MaterialCommunityIcons name="chevron-right" size={16} color="#333" />
-                    </TouchableOpacity>
-                </View>
-            </SafeAreaView>
+                <SafeAreaView style={styles.headerSafeArea} edges={['top']}>
+                    {/* Header mantido igual */}
+                    <View style={styles.headerContent}>
+                        <TouchableOpacity onPress={handleBackSafe} style={styles.backButtonHeader}>
+                            <MaterialCommunityIcons name="arrow-left" size={24} color="#333" />
+                        </TouchableOpacity>
+                        <TouchableOpacity style={styles.searchBarHeader} onPress={() => router.push('/(aux)/misc/search' as any)}>
+                            <MaterialCommunityIcons name="magnify" size={20} color="#999" style={styles.searchIcon} />
+                            <Text style={styles.searchTextHeader} numberOfLines={1}>Buscar no Mercado Souto</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity style={[styles.cartButtonHeader, { zIndex: 20 }]} onPress={() => router.push('/(aux)/shop/cart' as any)}>
+                            <CartIcon itemCount={totalItems} />
+                        </TouchableOpacity>
+                    </View>
+                    <View style={styles.locationBar}>
+                        <MaterialCommunityIcons name="map-marker-outline" size={14} color="#333" />
+                        <Text style={styles.locationText} numberOfLines={1}>{getAddressText()}</Text>
+                        <TouchableOpacity onPress={() => router.push('/(aux)/account/address' as any)}>
+                            <MaterialCommunityIcons name="chevron-right" size={16} color="#333" />
+                        </TouchableOpacity>
+                    </View>
+                </SafeAreaView>
 
-            {/* Conteúdo Scrollável */}
-            <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-                <View style={styles.whiteContainer}>
-                    <View style={styles.topInfo}>
-                        <Text style={styles.conditionText}>Novo  |  +1000 vendidos</Text>
-                        <View style={styles.titleRow}>
-                            <Text style={styles.title}>{product.name}</Text>
+                <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+                    <View style={styles.whiteContainer}>
+                        <View style={styles.topInfo}>
+                            <Text style={styles.conditionText}>Novo  |  +1000 vendidos</Text>
+                            <View style={styles.titleRow}>
+                                <Text style={styles.title}>{product.name}</Text>
+                            </View>
+                            <View style={styles.ratingContainer}>
+                                <MaterialCommunityIcons name="star" size={16} color={theme.colors.primary} />
+                                <Text style={styles.ratingText}>4.8 (124)</Text>
+                            </View>
                         </View>
-                        <View style={styles.ratingContainer}>
-                            <MaterialCommunityIcons name="star" size={16} color={theme.colors.primary} />
-                            <Text style={styles.ratingText}>4.8 (124)</Text>
+
+                        <View style={styles.imageContainer}>
+                            {product.images.length > 0 ? (
+                                <FlatList
+                                    data={product.images}
+                                    keyExtractor={(_, index) => index.toString()}
+                                    horizontal
+                                    pagingEnabled
+                                    showsHorizontalScrollIndicator={false}
+                                    onScroll={handleScroll}
+                                    scrollEventThrottle={16}
+                                    scrollEnabled={true} 
+                                    renderItem={({ item }) => (
+                                        <ZoomableImage uri={item} />
+                                    )}
+                                />
+                            ) : (
+                                <MaterialCommunityIcons name="image-off-outline" size={120} color="#ddd" />
+                            )}
+                            {product.images.length > 1 && (
+                                <View style={styles.pagination}>
+                                    {product.images.map((_, index) => (
+                                        <View key={index} style={[styles.dot, activeSlide === index ? styles.activeDot : null]} />
+                                    ))}
+                                </View>
+                            )}
+                            <TouchableOpacity onPress={handleToggleFavorite} style={styles.favoriteFloat}>
+                                <MaterialCommunityIcons 
+                                    name={product && isFavorite(product.id) ? "heart" : "heart-outline"} 
+                                    size={26} 
+                                    color={theme.colors.primary} 
+                                />
+                            </TouchableOpacity>
+                        </View>
+
+                        <View style={styles.priceContainer}>
+                            <Text style={styles.oldPrice}>R$ {originalPrice.toFixed(0)}</Text>
+                            <View style={styles.currentPriceRow}>
+                                <Text style={styles.currency}>R$</Text>
+                                <Text style={styles.price}>{Math.floor(product.price)}</Text>
+                                <Text style={styles.cents}>{((product.price % 1) * 100).toFixed(0).padStart(2, '0')}</Text>
+                                <Text style={styles.discount}>18% OFF</Text>
+                            </View>
+                            <Text style={styles.installments}>em <Text style={styles.greenText}>6x R$ {installmentPrice.toFixed(2).replace('.', ',')} sem juros</Text></Text>
+                        </View>
+
+                        <Text style={styles.stockText}>Estoque disponível</Text>
+
+                        <TouchableOpacity 
+                            style={styles.quantityContainer} 
+                            onPress={() => setShowQuantityModal(true)}
+                            activeOpacity={0.7}
+                        >
+                            <Text>Quantidade: <Text style={styles.boldText}>{quantity} unidade{quantity > 1 ? 's' : ''}</Text> ({product.stock || 0} disponíveis)</Text>
+                            <MaterialCommunityIcons name="chevron-right" size={20} color="#ccc" />
+                        </TouchableOpacity>
+
+                        <View style={styles.actionsContainer}>
+                            <TouchableOpacity style={styles.buyButton} onPress={handleBuy}>
+                                <Text style={styles.buyButtonText}>Comprar agora</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity style={styles.cartButton} onPress={handleAddToCart}>
+                                <Text style={styles.cartButtonText}>Adicionar ao carrinho</Text>
+                            </TouchableOpacity>
                         </View>
                     </View>
 
-                    {/* Carrossel de Imagens */}
-                    <View style={styles.imageContainer}>
-                        {product.images.length > 0 ? (
+                    <Divider style={styles.divider} />
+
+                    <View style={styles.descriptionSection}>
+                        <Text style={styles.sectionTitle}>Descrição</Text>
+                        <Text style={styles.descriptionText}>{product.description}</Text>
+                    </View>
+                    <View style={styles.bottomSpacer} />
+                </ScrollView>
+
+                <Modal
+                    visible={showQuantityModal}
+                    transparent={true}
+                    animationType="fade"
+                    onRequestClose={() => setShowQuantityModal(false)}
+                >
+                    <Pressable style={styles.modalOverlay} onPress={() => setShowQuantityModal(false)}>
+                        <View style={styles.modalContent}>
+                            <Text style={styles.modalTitle}>Escolha a quantidade</Text>
                             <FlatList
-                                data={product.images}
-                                keyExtractor={(_, index) => index.toString()}
-                                horizontal
-                                pagingEnabled
-                                showsHorizontalScrollIndicator={false}
-                                onScroll={handleScroll}
-                                scrollEventThrottle={16}
+                                data={quantityOptions}
+                                keyExtractor={(item) => item.toString()}
                                 renderItem={({ item }) => (
-                                    <View style={styles.carouselItem}>
-                                        <RNImage source={{ uri: item }} style={styles.productImage} resizeMode="contain" />
-                                    </View>
+                                    <TouchableOpacity 
+                                        style={[styles.modalItem, item === quantity && styles.modalItemSelected]}
+                                        onPress={() => {
+                                            setQuantity(item);
+                                            setShowQuantityModal(false);
+                                        }}
+                                    >
+                                        <Text style={[styles.modalItemText, item === quantity && styles.modalItemTextSelected]}>
+                                            {item} {item === 1 ? 'unidade' : 'unidades'}
+                                        </Text>
+                                        {item === quantity && <MaterialCommunityIcons name="check" size={20} color={theme.colors.primary} />}
+                                    </TouchableOpacity>
                                 )}
                             />
-                        ) : (
-                            <MaterialCommunityIcons name="image-off-outline" size={120} color="#ddd" />
-                        )}
-                        {product.images.length > 1 && (
-                            <View style={styles.pagination}>
-                                {product.images.map((_, index) => (
-                                    <View key={index} style={[styles.dot, activeSlide === index ? styles.activeDot : null]} />
-                                ))}
-                            </View>
-                        )}
-                        {/* Botão Favoritar Flutuante na Imagem */}
-                        <TouchableOpacity onPress={handleToggleFavorite} style={styles.favoriteFloat}>
-                            <MaterialCommunityIcons 
-                                name={product && isFavorite(product.id) ? "heart" : "heart-outline"} 
-                                size={26} 
-                                color={theme.colors.primary} 
-                            />
-                        </TouchableOpacity>
-                    </View>
-
-                    {/* Preços e Parcelas */}
-                    <View style={styles.priceContainer}>
-                        <Text style={styles.oldPrice}>R$ {originalPrice.toFixed(0)}</Text>
-                        <View style={styles.currentPriceRow}>
-                            <Text style={styles.currency}>R$</Text>
-                            <Text style={styles.price}>{Math.floor(product.price)}</Text>
-                            <Text style={styles.cents}>{((product.price % 1) * 100).toFixed(0).padStart(2, '0')}</Text>
-                            <Text style={styles.discount}>18% OFF</Text>
                         </View>
-                        <Text style={styles.installments}>em <Text style={styles.greenText}>6x R$ {installmentPrice.toFixed(2).replace('.', ',')} sem juros</Text></Text>
-                    </View>
+                    </Pressable>
+                </Modal>
 
-                    <Text style={styles.stockText}>Estoque disponível</Text>
-
-                    {/* Seletor de Quantidade */}
-                    <TouchableOpacity 
-                        style={styles.quantityContainer} 
-                        onPress={() => setShowQuantityModal(true)}
-                        activeOpacity={0.7}
-                    >
-                        <Text>Quantidade: <Text style={styles.boldText}>{quantity} unidade{quantity > 1 ? 's' : ''}</Text> ({product.stock || 0} disponíveis)</Text>
-                        <MaterialCommunityIcons name="chevron-right" size={20} color="#ccc" />
-                    </TouchableOpacity>
-
-                    {/* Botões de Ação */}
-                    <View style={styles.actionsContainer}>
-                        <TouchableOpacity style={styles.buyButton} onPress={handleBuy}>
-                            <Text style={styles.buyButtonText}>Comprar agora</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity style={styles.cartButton} onPress={handleAddToCart}>
-                            <Text style={styles.cartButtonText}>Adicionar ao carrinho</Text>
-                        </TouchableOpacity>
-                    </View>
-                </View>
-
-                <Divider style={styles.divider} />
-
-                {/* Descrição */}
-                <View style={styles.descriptionSection}>
-                    <Text style={styles.sectionTitle}>Descrição</Text>
-                    <Text style={styles.descriptionText}>{product.description}</Text>
-                </View>
-                <View style={styles.bottomSpacer} />
-            </ScrollView>
-
-            {/* Modal de Seleção de Quantidade */}
-            <Modal
-                visible={showQuantityModal}
-                transparent={true}
-                animationType="fade"
-                onRequestClose={() => setShowQuantityModal(false)}
-            >
-                <Pressable style={styles.modalOverlay} onPress={() => setShowQuantityModal(false)}>
-                    <View style={styles.modalContent}>
-                        <Text style={styles.modalTitle}>Escolha a quantidade</Text>
-                        <FlatList
-                            data={quantityOptions}
-                            keyExtractor={(item) => item.toString()}
-                            renderItem={({ item }) => (
-                                <TouchableOpacity 
-                                    style={[styles.modalItem, item === quantity && styles.modalItemSelected]}
-                                    onPress={() => {
-                                        setQuantity(item);
-                                        setShowQuantityModal(false);
-                                    }}
-                                >
-                                    <Text style={[styles.modalItemText, item === quantity && styles.modalItemTextSelected]}>
-                                        {item} {item === 1 ? 'unidade' : 'unidades'}
-                                    </Text>
-                                    {item === quantity && <MaterialCommunityIcons name="check" size={20} color={theme.colors.primary} />}
-                                </TouchableOpacity>
-                            )}
-                        />
-                    </View>
-                </Pressable>
-            </Modal>
-
-        </View>
+            </View>
+        </GestureHandlerRootView>
     );
 }
 
@@ -513,8 +570,8 @@ const styles = StyleSheet.create({
         })
     } as ViewStyle,
     loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-    headerContent: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingBottom: 10, height: 50, zIndex: 100 }, 
-    headerSafeArea: { backgroundColor: theme.colors.secondary, paddingTop: Platform.OS === 'android' ? 10 : 0 },
+    headerContent: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingVertical: 10, height: 55, zIndex: 100 }, 
+    headerSafeArea: { backgroundColor: theme.colors.secondary, zIndex: 99 },
     backButtonHeader: { marginRight: 10 },
     searchBarHeader: { flex: 1, flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', height: 35, borderRadius: 20, paddingHorizontal: 10, elevation: 2 },
     searchIcon: { marginLeft: 8 },
@@ -530,10 +587,10 @@ const styles = StyleSheet.create({
     title: { fontSize: 16, color: '#333', lineHeight: 22, flex: 1 },
     ratingContainer: { flexDirection: 'row', alignItems: 'center', marginTop: 5 },
     ratingText: { color: '#999', fontSize: 12, marginLeft: 5 },
-    imageContainer: { width: '100%', height: 320, justifyContent: 'center', alignItems: 'center', marginBottom: 20 },
-    carouselItem: { width: CAROUSEL_WIDTH, height: 300, justifyContent: 'center', alignItems: 'center' },
+    imageContainer: { width: '100%', height: 320, justifyContent: 'center', alignItems: 'center', marginBottom: 20, overflow: 'visible' },
+    carouselItem: { width: CAROUSEL_WIDTH, height: 300, justifyContent: 'center', alignItems: 'center', zIndex: 10 },
     productImage: { width: '100%', height: '100%' },
-    favoriteFloat: { position: 'absolute', top: 0, right: 0, backgroundColor: '#fff', padding: 8, borderRadius: 30, elevation: 3, shadowColor: '#000', shadowOpacity: 0.1, zIndex: 10 },
+    favoriteFloat: { position: 'absolute', top: 0, right: 0, backgroundColor: '#fff', padding: 8, borderRadius: 30, elevation: 3, shadowColor: '#000', shadowOpacity: 0.1, zIndex: 100 },
     pagination: { flexDirection: 'row', position: 'absolute', bottom: 5 },
     dot: { width: 7, height: 7, borderRadius: 3.5, backgroundColor: '#ddd', marginHorizontal: 3 },
     activeDot: { backgroundColor: theme.colors.primary },
