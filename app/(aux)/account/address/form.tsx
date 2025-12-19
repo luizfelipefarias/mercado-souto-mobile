@@ -139,24 +139,23 @@ export default function AddressForm() {
 
     const handleChange = useCallback((key: keyof AddressFormData, value: string) => {
         setForm(prev => ({ ...prev, [key]: value }));
+        // Limpa o erro ao digitar
         if (errors[key as keyof typeof errors]) {
             setErrors(prev => ({ ...prev, [key]: false }));
         }
     }, [errors]);
 
-    // Lógica da máscara de telefone
     const handlePhoneChange = (text: string) => {
-        // 1. Remove tudo que não é número
         let v = text.replace(/\D/g, '');
-        // 2. Limita tamanho (11 dígitos para celular com DDD)
         if (v.length > 11) v = v.slice(0, 11);
-
-        // 3. Aplica máscara (XX) XXXXX-XXXX
         v = v.replace(/^(\d{2})(\d)/, '($1) $2');
         v = v.replace(/(\d{5})(\d)/, '$1-$2');
 
         setContactPhone(v);
-        setErrors(p => ({...p, contactPhone: false}));
+        // Limpa erro ao digitar
+        if (errors.contactPhone) {
+            setErrors(p => ({...p, contactPhone: false}));
+        }
     };
 
     const handleBlurCep = useCallback(async () => {
@@ -180,6 +179,7 @@ export default function AddressForm() {
                 }));
                 setTempCity(data.localidade || '');
                 setTempState(data.uf || '');
+                // Limpa múltiplos erros relacionados ao endereço
                 setErrors(prev => ({ ...prev, zipCode: false, street: false, neighborhood: false, city: false }));
             } else {
                 Toast.show({ type: 'error', text1: 'CEP não encontrado', text2: 'Verifique o número digitado.' });
@@ -328,72 +328,96 @@ export default function AddressForm() {
 
                     <Text style={styles.sectionTitle}>Dados de Contato</Text>
                     
-                    <TextInput
-                        label="Nome completo"
-                        mode="outlined"
-                        value={contactName}
-                        onChangeText={(t) => { setContactName(t); setErrors(p => ({...p, contactName: false})) }}
-                        style={styles.input}
-                        error={errors.contactName}
-                        activeOutlineColor={theme.colors.primary}
-                    />
-                    {errors.contactName && <HelperText type="error" visible={true}>Digite o nome completo do recebedor.</HelperText>}
+                    <View>
+                        <TextInput
+                            label="Nome completo"
+                            mode="outlined"
+                            value={contactName}
+                            onChangeText={(t) => { 
+                                setContactName(t); 
+                                if(errors.contactName) setErrors(p => ({...p, contactName: false}));
+                            }}
+                            style={styles.input}
+                            error={errors.contactName}
+                            activeOutlineColor={theme.colors.primary}
+                        />
+                     
+                        <HelperText type="error" visible={errors.contactName}>
+                            Digite o nome completo do recebedor.
+                        </HelperText>
+                    </View>
 
-                    <TextInput
-                        label="Telefone (DDD + Número)"
-                        mode="outlined"
-                        value={contactPhone}
-                        onChangeText={handlePhoneChange} // Usando a função com máscara
-                        maxLength={15} // Limita (XX) XXXXX-XXXX
-                        style={styles.input}
-                        error={errors.contactPhone}
-                        activeOutlineColor={theme.colors.primary}
-                        keyboardType="phone-pad"
-                        placeholder='(00) 00000-0000'
-                    />
-                    {errors.contactPhone && <HelperText type="error" visible={true}>Telefone inválido (mínimo 10 dígitos).</HelperText>}
+                    <View>
+                        <TextInput
+                            label="Telefone (DDD + Número)"
+                            mode="outlined"
+                            value={contactPhone}
+                            onChangeText={handlePhoneChange}
+                            maxLength={15}
+                            style={styles.input}
+                            error={errors.contactPhone}
+                            activeOutlineColor={theme.colors.primary}
+                            keyboardType="phone-pad"
+                            placeholder='(00) 00000-0000'
+                        />
+                        <HelperText type="error" visible={errors.contactPhone}>
+                            Telefone inválido (mínimo 10 dígitos).
+                        </HelperText>
+                    </View>
 
                     <Text style={[styles.sectionTitle, {marginTop: 15}]}>Endereço</Text>
 
-                    <TextInput
-                        label="CEP"
-                        mode="outlined"
-                        value={form.zipCode}
-                        onChangeText={t => {
-                            const masked = t.replace(/\D/g, '').replace(/^(\d{5})(\d)/, '$1-$2');
-                            handleChange('zipCode', masked);
-                        }}
-                        onBlur={handleBlurCep}
-                        style={styles.input}
-                        error={errors.zipCode}
-                        activeOutlineColor={theme.colors.primary}
-                        keyboardType="numeric"
-                        maxLength={9}
-                        right={loadingCep ? <TextInput.Icon icon={() => <ActivityIndicator size={20} color={theme.colors.primary} />} /> : null}
-                    />
-                    {errors.zipCode && <HelperText type="error" visible={true}>CEP inválido.</HelperText>}
+                    <View>
+                        <TextInput
+                            label="CEP"
+                            mode="outlined"
+                            value={form.zipCode}
+                            onChangeText={t => {
+                                const masked = t.replace(/\D/g, '').replace(/^(\d{5})(\d)/, '$1-$2');
+                                handleChange('zipCode', masked);
+                            }}
+                            onBlur={handleBlurCep}
+                            style={styles.input}
+                            error={errors.zipCode}
+                            activeOutlineColor={theme.colors.primary}
+                            keyboardType="numeric"
+                            maxLength={9}
+                            right={loadingCep ? <TextInput.Icon icon={() => <ActivityIndicator size={20} color={theme.colors.primary} />} /> : null}
+                        />
+                        <HelperText type="error" visible={errors.zipCode}>
+                            CEP inválido.
+                        </HelperText>
+                    </View>
 
-                    <TextInput
-                        label="Bairro"
-                        mode="outlined"
-                        value={form.neighborhood}
-                        onChangeText={t => handleChange('neighborhood', t)}
-                        style={styles.input}
-                        error={errors.neighborhood}
-                        activeOutlineColor={theme.colors.primary}
-                    />
-                    {errors.neighborhood && <HelperText type="error" visible={true}>Bairro obrigatório.</HelperText>}
+                    <View>
+                        <TextInput
+                            label="Bairro"
+                            mode="outlined"
+                            value={form.neighborhood}
+                            onChangeText={t => handleChange('neighborhood', t)}
+                            style={styles.input}
+                            error={errors.neighborhood}
+                            activeOutlineColor={theme.colors.primary}
+                        />
+                        <HelperText type="error" visible={errors.neighborhood}>
+                            Bairro obrigatório.
+                        </HelperText>
+                    </View>
 
-                    <TextInput
-                        label="Rua / Avenida"
-                        mode="outlined"
-                        value={form.street}
-                        onChangeText={t => handleChange('street', t)}
-                        style={styles.input}
-                        error={errors.street}
-                        activeOutlineColor={theme.colors.primary}
-                    />
-                    {errors.street && <HelperText type="error" visible={true}>Rua obrigatória.</HelperText>}
+                    <View>
+                        <TextInput
+                            label="Rua / Avenida"
+                            mode="outlined"
+                            value={form.street}
+                            onChangeText={t => handleChange('street', t)}
+                            style={styles.input}
+                            error={errors.street}
+                            activeOutlineColor={theme.colors.primary}
+                        />
+                        <HelperText type="error" visible={errors.street}>
+                            Rua obrigatória.
+                        </HelperText>
+                    </View>
 
                     <View style={styles.row}>
                         <View style={{ flex: 1, marginRight: 10 }}>
@@ -407,7 +431,9 @@ export default function AddressForm() {
                                 activeOutlineColor={theme.colors.primary}
                                 keyboardType="numeric"
                             />
-                            {errors.number && <HelperText type="error" visible={true}>Obrigatório.</HelperText>}
+                            <HelperText type="error" visible={errors.number}>
+                                Obrigatório.
+                            </HelperText>
                         </View>
 
                         <View style={{ flex: 1.5 }}>
@@ -459,8 +485,8 @@ const styles = StyleSheet.create({
     headerTitle: { fontSize: 18, color: '#333', fontWeight: '500' },
     content: { padding: 20 },
     sectionTitle: { fontSize: 16, fontWeight: 'bold', color: '#666', marginBottom: 10 },
-    input: { backgroundColor: '#fff', fontSize: 16, marginBottom: 2 },
+    input: { backgroundColor: '#fff', fontSize: 16, marginBottom: 0 },
     lockedInput: { backgroundColor: '#f0f0f0', color: '#888' },
-    row: { flexDirection: 'row' },
+    row: { flexDirection: 'row', alignItems: 'flex-start' }, 
     saveButton: { backgroundColor: theme.colors.primary, borderRadius: 6, marginTop: 20 }
 });
