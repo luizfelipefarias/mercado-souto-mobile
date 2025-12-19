@@ -13,7 +13,6 @@ export default function Price({ value }: PriceProps) {
     if (typeof value === 'number') {
       priceValue = value;
     } else if (typeof value === 'string') {
-      // Tenta converter string "100.50" ou "100,50"
       priceValue = parseFloat(value.replace(',', '.'));
     }
 

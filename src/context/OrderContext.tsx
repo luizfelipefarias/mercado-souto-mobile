@@ -35,18 +35,15 @@ export function OrderProvider({ children }: { children: ReactNode }) {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loadingOrder, setLoadingOrder] = useState(false);
   
-  // 1. Recupera o token aqui também
   const { user, isGuest, token } = useAuth();
 
   const fetchMyOrders = useCallback(async () => {
-    // Verifica se tem user, id E o token
     if (!user || isGuest || !(user as any).id || !token) return;
 
     setLoadingOrder(true);
     try {
       console.log(`[OrderContext] Buscando pedidos em: /api/client/${(user as any).id}/orders`);
 
-      // 2. Endpoint atualizado e Token no Header
       const response = await api.get(`/api/client/${(user as any).id}/orders`, {
         headers: {
           Authorization: `Bearer ${token}`
@@ -66,10 +63,9 @@ export function OrderProvider({ children }: { children: ReactNode }) {
     } finally {
       setLoadingOrder(false);
     }
-  }, [user, isGuest, token]); // Token nas dependências
+  }, [user, isGuest, token]);
 
   const createOrder = async (orderData: any) => {
-    // Segurança: não cria pedido se não tiver token
     if (!token) {
         console.log("Tentativa de criar pedido sem token");
         return;
@@ -77,14 +73,12 @@ export function OrderProvider({ children }: { children: ReactNode }) {
 
     setLoadingOrder(true);
     try {
-      // 3. Passando token também na criação do pedido (segurança extra)
       await api.post('/api/orders', orderData, {
         headers: {
           Authorization: `Bearer ${token}`
         }
       });
       
-      // Atualiza a lista após criar
       await fetchMyOrders();
       
     } catch (error) {

@@ -23,7 +23,6 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 const SELECTED_ADDRESS_KEY = '@selected_address_id'; 
 const GUEST_ADDRESS_KEY = '@guest_addresses';
 
-// Tipo para exibição combinando a interface Address com campos extras possíveis
 type DisplayAddress = Address & {
     city?: string;
     state?: string;
@@ -39,7 +38,6 @@ export default function Checkout() {
     const [loadingAddress, setLoadingAddress] = useState(false);
     const [address, setAddress] = useState<DisplayAddress | null>(null);
 
-    // Estados do Cartão
     const [cardNumber, setCardNumber] = useState('');
     const [cardName, setCardName] = useState('');
     const [cardExpiry, setCardExpiry] = useState('');
@@ -50,7 +48,6 @@ export default function Checkout() {
         [cartItems]
     );
 
-    // --- FORMATAÇÃO DO CARTÃO ---
     const handleCardNumberChange = (text: string) => {
         const cleaned = text.replace(/\D/g, '');
         const formatted = cleaned.replace(/(\d{4})(?=\d)/g, '$1 ').substring(0, 19);
@@ -66,7 +63,6 @@ export default function Checkout() {
         }
     };
 
-    // Carrega o endereço selecionado
     const loadAddressData = useCallback(async () => {
         if (!signed && !isGuest) return;
 
@@ -87,7 +83,6 @@ export default function Checkout() {
 
             let selectedAddress = allAddresses.find(addr => addr.id === selectedId);
             
-            // Fallback: pega o primeiro se não houver selecionado
             if (!selectedAddress && allAddresses.length > 0) {
                 selectedAddress = allAddresses[0];
                 await AsyncStorage.setItem(SELECTED_ADDRESS_KEY, selectedAddress.id.toString());
@@ -119,7 +114,6 @@ export default function Checkout() {
     );
 
     const handleFinish = async () => {
-        // 1. Validações
         if (!signed || (user as any)?.isGuest) {
             Alert.alert('Login necessário', 'Você precisa estar logado para finalizar.', [
                 { text: 'Entrar', onPress: () => router.push('/(auth)/login' as any) },
@@ -145,19 +139,14 @@ export default function Checkout() {
 
         setLoading(true);
         try {
-            // A API é endpoint por produto: /api/order/product/{productId}/address/{clientAddressId}
-            // Precisamos criar um array de promessas para enviar cada item do carrinho individualmente
             const orderPromises = cartItems.map(item => {
                 const quantity = item.quantity || 1;
-                // URL params: productId e addressId
-                // Body: quantity
                 return api.post(
                     `/api/order/product/${item.id}/address/${address.id}`, 
                     { quantity: quantity }
                 );
             });
 
-            // Executa todas as requisições
             await Promise.all(orderPromises);
             
             console.log("Pedidos realizados com sucesso");
@@ -165,7 +154,6 @@ export default function Checkout() {
             clearCart();
             
             if (router.canDismiss()) router.dismissAll(); 
-            // Redireciona para 'Minhas Compras' pois múltiplos pedidos foram gerados
             router.replace('/(aux)/shop/my-purchases' as any);
             
             setTimeout(() => {

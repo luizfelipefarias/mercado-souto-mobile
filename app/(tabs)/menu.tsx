@@ -78,9 +78,9 @@ export default function Menu() {
             title: 'Compras',
             show: true,
             items: [
-                { label: 'Minhas compras', icon: 'shopping-outline', route: '/(aux)/shop/my-purchases' },
-                { label: 'Favoritos', icon: 'heart-outline', route: '/(tabs)/favorites' }, 
-                { label: 'Histórico', icon: 'clock-time-three-outline', route: '/(aux)/shop/history' },
+                { label: 'Minhas compras', icon: 'shopping-outline', route: '/(aux)/shop/my-purchases/' },
+                { label: 'Favoritos', icon: 'heart-outline', route: '/(tabs)/favorites/' }, 
+                { label: 'Histórico', icon: 'clock-time-three-outline', route: '/(aux)/shop/history/' },
             ]
         },
         {

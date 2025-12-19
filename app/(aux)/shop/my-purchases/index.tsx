@@ -8,8 +8,9 @@ import {
   StatusBar,
   ActivityIndicator,
   RefreshControl,
-  BackHandler,
-  Alert
+  Platform,
+  Alert,
+  BackHandler
 } from 'react-native';
 import { Text, Button, Divider } from 'react-native-paper';
 import { useRouter } from 'expo-router';
@@ -123,7 +124,7 @@ export default function MyPurchasesScreen() {
   const activeOrder = useMemo(() => {
       if (!orders) return null;
       return orders.find(o => 
-          ['APPROVED', 'PENDING', 'WAITING_PAYMENT', 'PREPARING', 'SHIPPED'].includes(o.status)
+          ['APPROVED', 'PENDING', 'PREPARING', 'SHIPPED'].includes(o.status)
       );
   }, [orders]);
 
@@ -169,9 +170,8 @@ export default function MyPurchasesScreen() {
 
   const getStatusInfo = (status: string) => {
     const map: Record<string, { label: string, color: string, icon: string }> = {
-      APPROVED: { label: 'Pagamento Aprovado', color: '#00a650', icon: 'check-circle' }, 
-      PENDING: { label: 'Processando pagamento', color: '#bf8e17', icon: 'credit-card-clock-outline' }, 
-      WAITING_PAYMENT: { label: 'Aguardando pagamento', color: '#bf8e17', icon: 'credit-card-clock-outline' }, 
+      APPROVED: { label: 'Aprovado', color: '#00a650', icon: 'check-circle' }, 
+      PENDING: { label: 'Pendente', color: '#ff9900', icon: 'clock-outline' }, 
       PREPARING: { label: 'Em preparação', color: '#3483fa', icon: 'package-variant' }, 
       SHIPPED: { label: 'Enviado', color: '#3483fa', icon: 'truck-fast' },
       DELIVERED: { label: 'Entregue', color: '#00a650', icon: 'check-all' },
@@ -251,7 +251,6 @@ export default function MyPurchasesScreen() {
                         {statusInfo.label}
                     </Text>
                 </View>
-
                 <Text style={styles.productTitle} numberOfLines={2}>
                     {firstItem.product.title}
                     {hasMoreItems && <Text style={styles.moreText}> + {item.orderItems.length - 1} itens</Text>}
@@ -283,7 +282,10 @@ export default function MyPurchasesScreen() {
           <TouchableOpacity onPress={handleBack} style={{ padding: 5 }}>
             <MaterialCommunityIcons name="arrow-left" size={24} color="#333" />
           </TouchableOpacity>
+          
           <Text style={styles.headerTitle}>Minhas Compras</Text>
+          
+          {/* View Vazia para manter o título centralizado */}
           <View style={{ width: 34 }} />
         </View>
       </SafeAreaView>

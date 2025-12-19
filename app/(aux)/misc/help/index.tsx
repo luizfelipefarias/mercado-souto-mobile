@@ -128,22 +128,7 @@ export default function Help() {
         </List.Section>
 
         {/* Rodapé de Contato */}
-        <View style={styles.contactContainer}>
-            <Text style={styles.contactTitle}>Não encontrou o que precisava?</Text>
-            <Text style={styles.contactSub}>Nossa equipe de especialistas está pronta para te ajudar.</Text>
-            
-            <Button 
-                mode="contained" 
-                onPress={handleContactSupport}
-                style={styles.contactButton}
-                labelStyle={{ fontWeight: 'bold' }}
-                icon="headset"
-            >
-                Entrar em contato
-            </Button>
-        </View>
-
-        <View style={styles.bottomSpacing} />
+      
       </ScrollView>
     </SafeAreaView>
   );

@@ -12,7 +12,6 @@ interface UserContextData {
 
 const UserContext = createContext<UserContextData>({} as UserContextData);
 
-// Chave local para endereços de convidado (copiada do AddressList.tsx)
 const GUEST_ADDRESS_KEY = '@guest_addresses'; 
 
 export function UserProvider({ children }: { children: ReactNode }) {
@@ -24,7 +23,6 @@ export function UserProvider({ children }: { children: ReactNode }) {
         setLoadingAddress(true);
 
         if (isGuest) {
-            // CENÁRIO GUEST: Carregar do AsyncStorage
             try {
                 const storedAddresses = await AsyncStorage.getItem(GUEST_ADDRESS_KEY);
                 const localAddresses: Address[] = storedAddresses ? JSON.parse(storedAddresses) : [];
@@ -44,9 +42,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
              return;
         }
 
-        // CENÁRIO LOGADO: Buscar via API
         try {
-            // ✅ CORRETO: Este endpoint busca TODOS os endereços associados ao {idClient}.
             const response = await api.get<Address[]>(`/api/address/by-client/${user.id}`); 
             setAddresses(Array.isArray(response.data) ? response.data : []);
         } catch (error) {

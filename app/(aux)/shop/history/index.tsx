@@ -20,7 +20,6 @@ export default function History() {
     const router = useRouter();
     const { history, clearHistory } = useHistory();
 
-    // Lógica de confirmação para Web e Mobile
     const handleClear = () => {
         if (Platform.OS === 'web') {
             if (window.confirm('Deseja apagar todo o histórico?')) {
@@ -35,8 +34,7 @@ export default function History() {
     };
 
     const renderItem = ({ item }: { item: any }) => {
-        // 🟢 CORREÇÃO: Blindagem do preço
-        // Se item.price for undefined, null ou texto inválido, vira 0.
+
         const safePrice = Number(item.price) || 0;
 
         return (
@@ -54,7 +52,7 @@ export default function History() {
                 
                 <View style={styles.info}>
                     <Text style={styles.title} numberOfLines={2}>{item.title}</Text>
-                    {/* Usa safePrice aqui para garantir que .toFixed funcione */}
+
                     <Text style={styles.price}>R$ {safePrice.toFixed(2).replace('.', ',')}</Text>
                 </View>
                 
@@ -69,7 +67,7 @@ export default function History() {
 
             <SafeAreaView style={styles.header}>
                 <View style={styles.headerContent}>
-                    {/* Fallback seguro para navegação */}
+
                     <TouchableOpacity 
                         onPress={() => router.canGoBack() ? router.back() : router.replace('/(tabs)')}
                     >

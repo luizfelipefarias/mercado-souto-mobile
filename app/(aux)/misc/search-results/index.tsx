@@ -12,7 +12,7 @@ import {
   Modal,
   TouchableWithoutFeedback
 } from 'react-native';
-import { Text, Button, Divider, RadioButton, Checkbox } from 'react-native-paper'; // Usando componentes do Paper se tiver, ou nativos
+import { Text, Button, Divider, RadioButton, Checkbox } from 'react-native-paper'; 
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { theme } from '../../../../src/constants/theme';
@@ -37,8 +37,8 @@ export default function SearchResults() {
   const { q } = useLocalSearchParams<{ q?: string }>();
 
   // --- ESTADOS DE DADOS ---
-  const [allProducts, setAllProducts] = useState<Product[]>([]); // Todos os produtos que deram match (backup)
-  const [results, setResults] = useState<Product[]>([]); // Produtos exibidos na tela (filtrados)
+  const [allProducts, setAllProducts] = useState<Product[]>([]);
+  const [results, setResults] = useState<Product[]>([]); 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
 
@@ -224,7 +224,7 @@ export default function SearchResults() {
         />
       )}
 
-      {/* --- MODAL DE FILTRO (BOTTOM SHEET STYLE) --- */}
+
       <Modal
         visible={modalVisible}
         transparent={true}

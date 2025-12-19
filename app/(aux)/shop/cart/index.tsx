@@ -111,8 +111,6 @@ const CartItemComponent = ({ item, handleRemove, updateQuantity, router }: CartI
 
 export default function Cart() {
   const router = useRouter();
-  // 💡 Note que, no contexto local (Guest), user pode ser {name: 'Visitante', id: null},
-  // mas isGuest é a forma mais clara de verificar.
   const { user, isGuest } = useAuth(); 
   const { cartItems, removeFromCart, updateQuantity } = useCart();
   
@@ -140,16 +138,13 @@ export default function Cart() {
 
   useAndroidNavigationBar(true);
 
-  // 🟢 Substituindo Alert por Toast no handleRemove (exceto na confirmação web)
   const handleRemove = (id: number) => {
-    // 💡 Lógica de confirmação para Web
     if (Platform.OS === 'web') {
         if (window.confirm('Tem certeza que deseja remover este produto do carrinho?')) {
             removeFromCart(id);
             Toast.show({ type: 'success', text1: 'Item removido!' });
         }
     } else {
-        // Lógica de confirmação nativa (Alert)
         Alert.alert('Remover item', 'Tem certeza que deseja remover este produto do carrinho?', [
             { text: 'Cancelar', style: 'cancel' },
             {
@@ -164,10 +159,8 @@ export default function Cart() {
     }
   };
 
-  // 🟢 Lógica de Checkout: Substituindo Alert por Toast e forçando login
   const handleCheckout = () => {
 
-    // 💡 Lógica Guest: Se não está logado OU é convidado, joga para login
     if (!user || isGuest) {
       Toast.show({
         type: 'info',
@@ -181,7 +174,6 @@ export default function Cart() {
     }
 
     if (cartItems.length === 0) {
-        // 🟢 Substituindo Alert por Toast em caso de carrinho vazio
         Toast.show({
             type: 'info',
             text1: 'Carrinho vazio',
