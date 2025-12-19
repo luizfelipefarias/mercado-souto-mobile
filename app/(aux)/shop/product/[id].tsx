@@ -1,510 +1,574 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { 
     View, 
     StyleSheet, 
     ScrollView, 
-    TouchableOpacity, 
-    Platform,
     Image as RNImage, 
-    useWindowDimensions,
-    StatusBar,
-    Alert,
-    ActivityIndicator,
+    TouchableOpacity, 
+    ActivityIndicator, 
+    Alert, 
+    StatusBar, 
+    SafeAreaView, 
+    Platform,
+    FlatList,
+    Dimensions,
+    NativeSyntheticEvent,
+    NativeScrollEvent,
+    ViewStyle,
     Modal,
-    TextInput,
-    KeyboardAvoidingView
+    Pressable
 } from 'react-native';
-import { Text, Button, Badge, Snackbar, Divider } from 'react-native-paper';
-import { MaterialCommunityIcons, Ionicons, FontAwesome } from '@expo/vector-icons';
-import { useRouter, useLocalSearchParams } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { Text, Divider } from 'react-native-paper';
+import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router'; 
+import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { theme } from '@/constants/theme';
+import api from '@/services/api';
+import { useAndroidNavigationBar } from '@/hooks/useAndroidNavigationBar';
+import { useCart } from '@/context/CartContext'; 
+import { useAuth } from '@/context/AuthContext'; 
+import { useHistory } from '@/context/HistoryContext';
+import { useFavorites } from '@/context/FavoritesContext'; 
+import CartIcon from '@/components/CartIcon'; 
+import Toast from 'react-native-toast-message';
+import AsyncStorage from '@react-native-async-storage/async-storage'; 
 
-import api from '../../../../src/services/api'; 
-import { useCart } from '../../../../src/context/CartContext';
-import { useProduct } from '../../../../src/context/ProductContext';
-import { useAuth } from '../../../../src/context/AuthContext'; 
+import Animated, { 
+    useSharedValue, 
+    useAnimatedStyle, 
+    withTiming, 
+    withSequence, 
+    runOnJS, 
+    Easing,
+    interpolate
+} from 'react-native-reanimated';
 
-const ML_YELLOW = '#FFE600'; 
-const BG_GRAY = '#F5F5F5';
-const THEME_PRIMARY = '#3483fa'; 
-const GREEN_FREE = '#00a650';
+import { Address } from '@/interfaces'; 
 
-interface Review {
+const { width } = Dimensions.get('window');
+const CAROUSEL_WIDTH = width - 30; 
+const ANIMATION_DURATION = 800; 
+const MINIATURE_SIZE = 80;      
+
+const SELECTED_ADDRESS_KEY = '@selected_address_id'; 
+const GUEST_ADDRESS_KEY = '@guest_addresses';
+
+type ProductDetail = {
+    id: number;
+    name: string;
+    price: number;
+    description: string;
+    images: string[];
+    stock?: number; 
+};
+
+type ProductBackend = {
     id: number;
     title: string;
+    price: number;
     description: string;
-    rating: number; 
-    clientName?: string;
-}
+    imageURL?: string[];
+    stock: number;
+};
+
+type LocalCartItem = {
+    id: number;
+    name: string;
+    price: number;
+    quantity: number;
+    image: string;
+    shipping: number;
+};
+
+type ActiveAddress = Address & {
+    city?: string;
+    state?: string;
+    neighborhood?: string;
+};
 
 export default function ProductDetails() {
+    const { id } = useLocalSearchParams(); 
     const router = useRouter();
-    const { id } = useLocalSearchParams();
-    const productId = Number(id);
     
-    const { cartItems, addToCart } = useCart();
-    const { products } = useProduct();
-    // Importando token para garantir autenticação nas requisições manuais
-    const { user, isGuest, token } = useAuth(); 
-
-    const [product, setProduct] = useState<any>(null);
-    const [reviews, setReviews] = useState<Review[]>([]);
-    const [isFavorite, setIsFavorite] = useState(false);
+    const { addToCart, cartItems } = useCart(); 
+    const { user, isGuest } = useAuth(); 
+    const { addToHistory } = useHistory();
+    const { isFavorite, addFavorite, removeFavorite } = useFavorites();
     
-    const [loadingBuy, setLoadingBuy] = useState(false);
-    const [loadingReview, setLoadingReview] = useState(false);
-    const [snackbarVisible, setSnackbarVisible] = useState(false);
-    const [snackbarMsg, setSnackbarMsg] = useState('');
+    const [activeAddress, setActiveAddress] = useState<ActiveAddress | null>(null);
+    const [loadingLocation, setLoadingLocation] = useState(true);
+    const [product, setProduct] = useState<ProductDetail | null>(null);
+    const [loading, setLoading] = useState(true);
+    const [activeSlide, setActiveSlide] = useState(0);
+    const [quantity, setQuantity] = useState(1);
+    const [showQuantityModal, setShowQuantityModal] = useState(false);
 
-    // Modal de Avaliação
-    const [modalVisible, setModalVisible] = useState(false);
-    const [newRating, setNewRating] = useState(0);
-    const [newTitle, setNewTitle] = useState('');
-    const [newDesc, setNewDesc] = useState('');
+    const totalItems = cartItems.reduce((acc, item) => acc + (item.quantity || 1), 0);
 
-    // --- EFEITOS ---
+    const flyX = useSharedValue(0); 
+    const flyY = useSharedValue(0);
+    const flyScale = useSharedValue(0); 
+    const flyOpacity = useSharedValue(0);
+    const flyRotation = useSharedValue(0);
+
+    useAndroidNavigationBar(true);
+
+    const fetchActiveAddress = useCallback(async () => {
+        setLoadingLocation(true);
+        let addresses: ActiveAddress[] = [];
+        let selectedId: number | null = null;
+
+        try {
+            const selectedIdString = await AsyncStorage.getItem(SELECTED_ADDRESS_KEY);
+            selectedId = selectedIdString ? Number(selectedIdString) : null;
+
+            if (isGuest) {
+                const stored = await AsyncStorage.getItem(GUEST_ADDRESS_KEY);
+                if (stored) addresses = JSON.parse(stored) as ActiveAddress[]; 
+            } else if (user?.id) {
+                const res = await api.get<Address[]>(`/api/address/by-client/${user.id}`);
+                addresses = res.data.map((addr: any) => ({
+                    ...addr,
+                    city: addr.city || 'Cidade',
+                    state: addr.state || 'UF',
+                    neighborhood: addr.additionalInfo || addr.neighborhood,
+                })) as ActiveAddress[];
+            }
+
+            const foundAddress = addresses.find(addr => addr.id === selectedId);
+            setActiveAddress(foundAddress || null);
+
+        } catch (e) {
+            console.error("Erro ao buscar endereço ativo:", e);
+            setActiveAddress(null);
+        } finally {
+            setLoadingLocation(false);
+        }
+    }, [isGuest, user?.id]);
+
+    useFocusEffect(
+        useCallback(() => {
+            fetchActiveAddress();
+        }, [fetchActiveAddress])
+    );
+
     useEffect(() => {
-        if (products && productId) {
-            const found = products.find((p: any) => Number(p.id) === productId);
-            setProduct(found);
-            fetchReviews();
-        }
-    }, [productId, products]);
-
-    useEffect(() => {
-        if (user && product) {
-            checkIfFavorite();
-        }
-    }, [user, product]);
-
-    // --- FUNÇÕES DE BUSCA ---
-    const fetchReviews = async () => {
-        try {
-            const res = await api.get(`/api/review/product/${productId}`);
-            if (Array.isArray(res.data)) {
-                setReviews(res.data);
-            } else {
-                setReviews([]);
-            }
-        } catch (error) {
-            console.log("Erro ao buscar reviews", error);
-            setReviews([]); 
-        }
-    };
-
-    const checkIfFavorite = async () => {
-        if (!user) return;
-        try {
-            const res = await api.get(`/api/client/${user.id}/favorite-products`);
-            const favorites = Array.isArray(res.data) ? res.data : [];
-            const isFav = favorites.some((fav: any) => fav.id === productId);
-            setIsFavorite(isFav);
-        } catch (error) {
-            console.log("Erro ao checar favoritos");
-        }
-    };
-
-    // --- AÇÕES DO USUÁRIO ---
-    const toggleFavorite = async () => {
-        if (!user || isGuest) {
-            Alert.alert("Atenção", "Faça login para favoritar produtos.");
-            return;
-        }
-
-        try {
-            const config = { headers: { Authorization: token?.startsWith('Bearer') ? token : `Bearer ${token}` }};
-            
-            if (isFavorite) {
-                await api.delete(`/api/client/${user.id}/favorite-product/${productId}`, config);
-                setIsFavorite(false);
-                setSnackbarMsg('Removido dos favoritos');
-            } else {
-                await api.post(`/api/client/${user.id}/favorite-product/${productId}`, {}, config);
-                setIsFavorite(true);
-                setSnackbarMsg('Adicionado aos favoritos');
-            }
-            setSnackbarVisible(true);
-        } catch (error) {
-            Alert.alert("Erro", "Não foi possível atualizar favoritos.");
-        }
-    };
-
-    // --- COMPRAR AGORA (SEM REDIRECIONAR) ---
-    const handleBuyNow = async () => {
-        if (!user || isGuest) {
-            router.push('/(auth)/login' as any);
-            return;
-        }
-
-        setLoadingBuy(true);
-        try {
-            // 1. Busca endereço válido
-            let addressId = null;
-            
-            // Tenta pegar do contexto local
-            if (user.addresses && user.addresses.length > 0) {
-                addressId = user.addresses[0].id;
-            } else {
-                // Tenta pegar da API se o contexto estiver desatualizado
-                const resAddr = await api.get(`/api/address/by-client/${user.id}`);
-                if (Array.isArray(resAddr.data) && resAddr.data.length > 0) {
-                    addressId = resAddr.data[0].id;
-                }
-            }
-
-            // Se não tiver endereço, obriga a cadastrar
-            if (!addressId) {
-                Alert.alert(
-                    "Endereço necessário", 
-                    "Para comprar com 1 clique, cadastre um endereço.",
-                    [
-                        { text: "Cancelar", style: "cancel" },
-                        { text: "Cadastrar", onPress: () => router.push('/(aux)/account/address/create' as any) }
-                    ]
-                );
-                setLoadingBuy(false);
+        const fetchProductDetails = async () => {
+            if (!id || isNaN(Number(id))) {
+                setTimeout(() => {
+                    Alert.alert("Erro", "Produto inválido ou não encontrado.", [
+                        { text: "OK", onPress: () => { router.canGoBack() ? router.back() : router.replace('/(tabs)/home' as any); } }
+                    ]);
+                }, 100); 
                 return;
             }
 
-            // 2. Faz o pedido (Ordem Direta)
-            const validToken = token?.startsWith('Bearer ') ? token : `Bearer ${token}`;
-            
-            await api.post(
-                `/api/order/product/${productId}/address/${addressId}`, 
-                { quantity: 1 }, 
-                { headers: { Authorization: validToken } } // Header explícito
-            );
+            setLoading(true);
+            try {
+                const response = await api.get(`/api/product/${id}`);
+                const data: ProductBackend = response.data;
+                const newProduct: ProductDetail = {
+                    id: data.id,
+                    name: data.title,
+                    price: data.price,
+                    description: data.description || "Sem descrição disponível.",
+                    images: data.imageURL && data.imageURL.length > 0 ? data.imageURL : [],
+                    stock: data.stock
+                };
+                setProduct(newProduct);
 
-            // 3. Sucesso (Mantém na tela)
-            Alert.alert(
-                "Compra Realizada! 🎉", 
-                "Seu pedido foi processado e logo será enviado para seu endereço padrão.",
-                [
-                    { text: "Continuar Comprando" },
-                    { text: "Ver Meus Pedidos", onPress: () => router.push('/(aux)/shop/orders' as any) }
-                ]
-            );
+                addToHistory({
+                    id: newProduct.id,
+                    title: newProduct.name,
+                    price: newProduct.price,
+                    image: newProduct.images[0] || 'placeholder'
+                });
 
-        } catch (error) {
-            console.error(error);
-            Alert.alert("Erro", "Não foi possível finalizar a compra. Tente adicionar ao carrinho.");
-        } finally {
-            setLoadingBuy(false);
-        }
+            } catch (error) {
+                setTimeout(() => {
+                    Alert.alert("Ops!", "Produto não encontrado.", [
+                        { text: "OK", onPress: () => router.back() }
+                    ]);
+                }, 100);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        fetchProductDetails();
+    }, [id]);
+
+    const handleScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+        const slide = Math.ceil(event.nativeEvent.contentOffset.x / event.nativeEvent.layoutMeasurement.width);
+        if (slide !== activeSlide) setActiveSlide(slide);
     };
 
-    // --- ENVIAR AVALIAÇÃO ---
-    const handleSubmitReview = async () => {
-        if (!user) {
-            Alert.alert("Erro", "Você precisa estar logado.");
-            return;
+    const getAddressText = () => {
+        if (loadingLocation) return "Carregando...";
+        if (activeAddress && activeAddress.street) {
+            return `Enviar para ${user?.name?.split(' ')[0] || activeAddress.contactName || 'Você'}: ${activeAddress.street}, ${activeAddress.number}`;
         }
-        if (newRating === 0) {
-            Alert.alert("Avaliação", "Selecione as estrelas.");
-            return;
-        }
-        if (!newTitle.trim() || !newDesc.trim()) {
-            Alert.alert("Avaliação", "Preencha título e descrição.");
-            return;
-        }
-
-        setLoadingReview(true);
-        try {
-            const validToken = token?.startsWith('Bearer ') ? token : `Bearer ${token}`;
-            
-            await api.post(
-                `/api/review/client/${user.id}/product/${productId}`, 
-                {
-                    title: newTitle,
-                    description: newDesc,
-                    rating: newRating
-                },
-                { headers: { Authorization: validToken } }
-            );
-
-            setModalVisible(false);
-            setNewRating(0);
-            setNewTitle('');
-            setNewDesc('');
-            setSnackbarMsg("Avaliação enviada!");
-            setSnackbarVisible(true);
-            fetchReviews(); 
-
-        } catch (error: any) {
-            console.error("Erro review:", error.response?.status);
-            if (error.response?.status === 403) {
-                Alert.alert("Não permitido", "Você precisa ter comprado e recebido este produto para avaliar.");
-            } else {
-                Alert.alert("Erro", "Falha ao enviar avaliação.");
-            }
-        } finally {
-            setLoadingReview(false);
-        }
-    };
-
-    // --- HELPER DE INTERFACE ---
-    const getHeaderAddress = () => {
-        if (user && user.name) {
-            const firstAddress = user.addresses && user.addresses.length > 0 ? user.addresses[0] : null;
-            if (firstAddress) {
-                // Tenta pegar cidade ou bairro, usando cast any se a tipagem estiver incompleta
-                const location = (firstAddress as any).city || (firstAddress as any).neighborhood || 'seu endereço';
-                return `Enviar para ${user.name.split(' ')[0]} - ${location}`;
-            }
+        if (user && !(user as any).isGuest && user.name) {
             return `Enviar para ${user.name.split(' ')[0]}`;
         }
-        return 'Informe seu CEP';
+        return 'Selecione um endereço para calcular o frete.';
     };
 
-    // --- HELPER NOME VENDEDOR ---
-    const getSellerName = () => {
-        if (!product?.seller) return "Loja Oficial Souto";
-        // Tenta pegar nome fantasia ou razão social, senão mostra ID
-        return product.seller.tradeName || product.seller.name || product.seller.companyName || `Vendedor (ID: ${product.seller.id})`;
+    const flyingStyle = useAnimatedStyle(() => {
+        const rotateZ = `${interpolate(flyRotation.value, [0, 1], [0, 360])}deg`;
+        return {
+            position: 'absolute',
+            width: MINIATURE_SIZE,
+            height: MINIATURE_SIZE,
+            zIndex: 9999,
+            top: 0,
+            left: 0,
+            opacity: flyOpacity.value,
+            borderRadius: MINIATURE_SIZE / 2,
+            borderWidth: 3,       
+            borderColor: '#fff',
+            shadowColor: "#000",
+            shadowOffset: { width: 0, height: 4 },
+            shadowOpacity: 0.3,
+            shadowRadius: 4.65,
+            elevation: 8,
+            pointerEvents: 'none', 
+            transform: [
+                { translateX: flyX.value },
+                { translateY: flyY.value },
+                { scale: flyScale.value },
+                { rotateZ: rotateZ } 
+            ]
+        };
+    });
+
+    const triggerFlyAnimation = (callback: () => void) => {
+        const startX = width / 2 - (MINIATURE_SIZE / 2);
+        const startY = 300; 
+        const destX = width - 60; 
+        const destY = Platform.OS === 'ios' ? 50 : 25;
+
+        flyX.value = startX;
+        flyY.value = startY;
+        flyScale.value = 0.3; 
+        flyOpacity.value = 1;
+        flyRotation.value = 0;
+
+        flyX.value = withTiming(destX, { duration: ANIMATION_DURATION, easing: Easing.bezier(0.33, 1, 0.68, 1) });
+        flyY.value = withTiming(destY, { duration: ANIMATION_DURATION, easing: Easing.out(Easing.exp) });
+        flyScale.value = withSequence(
+            withTiming(1.2, { duration: ANIMATION_DURATION * 0.3 }),
+            withTiming(0.4, { duration: ANIMATION_DURATION * 0.7 }) 
+        );
+        flyRotation.value = withTiming(1, { duration: ANIMATION_DURATION });
+        flyOpacity.value = withSequence(
+            withTiming(1, { duration: ANIMATION_DURATION * 0.8 }),
+            withTiming(0, { duration: ANIMATION_DURATION * 0.2 }, (finished) => {
+                if (finished) runOnJS(callback)();
+            })
+        );
     };
 
-    if (!product) {
+    const handleBuy = () => {
+        if (!product) return;
+        if (!user || isGuest) {
+            Toast.show({ type: 'info', text1: 'Acesso Restrito', text2: 'Faça login para comprar.' });
+            router.push('/(auth)/login' as any);
+            return;
+        }
+        
+        const itemToAdd: LocalCartItem = {
+            id: product.id,
+            name: product.name,
+            price: product.price,
+            quantity: quantity, 
+            image: product.images[0] || '', 
+            shipping: 0 
+        };
+        addToCart(itemToAdd as any); 
+        router.push('/(aux)/shop/checkout' as any);
+    };
+
+    const handleToggleFavorite = async () => {
+        if (!product) return;
+        if (isFavorite(product.id)) {
+            await removeFavorite(product.id);
+        } else {
+            await addFavorite({
+                id: product.id,
+                title: product.name,
+                price: product.price,
+                imageURL: product.images
+            });
+        }
+    };
+
+    const handleAddToCart = () => {
+        if (!product) return;
+        
+        triggerFlyAnimation(() => {
+            const itemToAdd: LocalCartItem = {
+                id: product.id,
+                name: product.name,
+                price: product.price,
+                quantity: quantity, 
+                image: product.images[0] || '', 
+                shipping: 0 
+            };
+            addToCart(itemToAdd as any); 
+        });
+    };
+
+    if (loading) {
         return (
-            <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
-                <ActivityIndicator size="large" color={THEME_PRIMARY} />
-                <Text style={{marginTop: 10}}>Carregando produto...</Text>
+            <View style={styles.loadingContainer}>
+                <ActivityIndicator size="large" color={theme.colors.primary} />
             </View>
         );
     }
 
-    const imageUri = (product.imageURL && product.imageURL.length > 0) ? product.imageURL[0] : null;
-    const specifications = product.attributes || [
-        { name: 'Especificação', value: product.specification || 'Padrão' },
-        { name: 'Categoria', value: product.category?.name || 'Geral' },
-    ];
+    if (!product) return null;
+
+    const originalPrice = product.price * 1.25; 
+    const installmentPrice = product.price / 6;
+    const maxQuantity = Math.min(product.stock || 1, 6);
+    const quantityOptions = Array.from({ length: maxQuantity }, (_, i) => i + 1);
 
     return (
         <View style={styles.container}>
-            <StatusBar barStyle="dark-content" backgroundColor={ML_YELLOW} />
+            <StatusBar barStyle="dark-content" backgroundColor={theme.colors.secondary} translucent={false} />
             
-            {/* HEADER */}
-            <SafeAreaView edges={['top']} style={{ backgroundColor: ML_YELLOW, zIndex: 100 }}>
-                <View style={[styles.headerContainer, { paddingTop: Platform.OS === 'ios' ? 10 : 0 }]}>
-                    <View style={styles.headerContent}>
-                        <TouchableOpacity onPress={() => router.back()} style={{ paddingRight: 10 }}>
-                            <Ionicons name="arrow-back" size={24} color="#333" />
-                        </TouchableOpacity>
+            {/* Imagem Animada (Escondida até disparar) */}
+            {product.images.length > 0 && (
+                <Animated.Image 
+                    source={{ uri: product.images[0] }} 
+                    style={flyingStyle} 
+                    resizeMode="cover"
+                />
+            )}
 
-                        <TouchableOpacity 
-                            style={styles.searchBar} 
-                            onPress={() => router.push('/(aux)/misc/search/' as any)}
-                            activeOpacity={0.9}
-                        >
-                            <Ionicons name="search" size={20} color="#999" style={{ marginLeft: 15 }} />
-                            <Text style={styles.searchText} numberOfLines={1}>Buscar no Mercado Souto</Text>
-                        </TouchableOpacity>
-
-                        <TouchableOpacity onPress={() => router.push('/(aux)/shop/cart' as any)} style={{ paddingLeft: 15 }}>
-                            <MaterialCommunityIcons name="cart-outline" size={28} color="#333" />
-                            {cartItems.length > 0 && (
-                                <Badge size={16} style={styles.cartBadge}>{cartItems.length}</Badge>
-                            )}
-                        </TouchableOpacity>
-                        
-                        <TouchableOpacity onPress={() => router.push('/(tabs)/menu' as any)} style={{ paddingLeft: 15 }}>
-                            <Ionicons name="menu-outline" size={28} color="#333" />
-                        </TouchableOpacity>
-                    </View>
-
-                    <TouchableOpacity style={styles.addressRow} onPress={() => router.push('/(aux)/account/address' as any)}>
-                        <Ionicons name="location-outline" size={16} color="#333" />
-                        <Text style={styles.addressText} numberOfLines={1}>{getHeaderAddress()}</Text>
-                        <Ionicons name="chevron-forward" size={14} color="#777" style={{ marginLeft: 2 }} />
+            {/* Header Amarelo */}
+            <SafeAreaView style={styles.headerSafeArea}>
+                <View style={styles.headerContent}>
+                    <TouchableOpacity onPress={() => router.back()} style={styles.backButtonHeader}>
+                        <MaterialCommunityIcons name="arrow-left" size={24} color="#333" />
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.searchBarHeader} onPress={() => router.push('/(aux)/misc/search' as any)}>
+                        <MaterialCommunityIcons name="magnify" size={20} color="#999" style={styles.searchIcon} />
+                        <Text style={styles.searchTextHeader} numberOfLines={1}>Buscar no Mercado Souto</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={[styles.cartButtonHeader, { zIndex: 20 }]} onPress={() => router.push('/(aux)/shop/cart' as any)}>
+                        <CartIcon itemCount={totalItems} />
+                    </TouchableOpacity>
+                </View>
+                <View style={styles.locationBar}>
+                    <MaterialCommunityIcons name="map-marker-outline" size={14} color="#333" />
+                    <Text style={styles.locationText} numberOfLines={1}>{getAddressText()}</Text>
+                    <TouchableOpacity onPress={() => router.push('/(aux)/account/address' as any)}>
+                         <MaterialCommunityIcons name="chevron-right" size={16} color="#333" />
                     </TouchableOpacity>
                 </View>
             </SafeAreaView>
 
-            <ScrollView contentContainerStyle={{ paddingBottom: 40 }} showsVerticalScrollIndicator={false} style={{ backgroundColor: BG_GRAY }}>
-                
-                {/* 1. CARD PRINCIPAL */}
-                <View style={styles.card}>
-                    <Text style={styles.conditionText}>Novo  |  {product.totalReviews || 0} reviews</Text>
-                    
-                    <View style={styles.titleRow}>
-                        <Text style={styles.productTitle}>{product.title}</Text>
-                        <TouchableOpacity onPress={toggleFavorite}>
+            {/* Conteúdo Scrollável */}
+            <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+                <View style={styles.whiteContainer}>
+                    <View style={styles.topInfo}>
+                        <Text style={styles.conditionText}>Novo  |  +1000 vendidos</Text>
+                        <View style={styles.titleRow}>
+                            <Text style={styles.title}>{product.name}</Text>
+                        </View>
+                        <View style={styles.ratingContainer}>
+                            <MaterialCommunityIcons name="star" size={16} color={theme.colors.primary} />
+                            <Text style={styles.ratingText}>4.8 (124)</Text>
+                        </View>
+                    </View>
+
+                    {/* Carrossel de Imagens */}
+                    <View style={styles.imageContainer}>
+                        {product.images.length > 0 ? (
+                            <FlatList
+                                data={product.images}
+                                keyExtractor={(_, index) => index.toString()}
+                                horizontal
+                                pagingEnabled
+                                showsHorizontalScrollIndicator={false}
+                                onScroll={handleScroll}
+                                scrollEventThrottle={16}
+                                renderItem={({ item }) => (
+                                    <View style={styles.carouselItem}>
+                                        <RNImage source={{ uri: item }} style={styles.productImage} resizeMode="contain" />
+                                    </View>
+                                )}
+                            />
+                        ) : (
+                            <MaterialCommunityIcons name="image-off-outline" size={120} color="#ddd" />
+                        )}
+                        {product.images.length > 1 && (
+                            <View style={styles.pagination}>
+                                {product.images.map((_, index) => (
+                                    <View key={index} style={[styles.dot, activeSlide === index ? styles.activeDot : null]} />
+                                ))}
+                            </View>
+                        )}
+                        {/* Botão Favoritar Flutuante na Imagem */}
+                        <TouchableOpacity onPress={handleToggleFavorite} style={styles.favoriteFloat}>
                             <MaterialCommunityIcons 
-                                name={isFavorite ? "heart" : "heart-outline"} 
-                                size={28} 
-                                color={THEME_PRIMARY} 
+                                name={product && isFavorite(product.id) ? "heart" : "heart-outline"} 
+                                size={26} 
+                                color={theme.colors.primary} 
                             />
                         </TouchableOpacity>
                     </View>
 
-                    <View style={styles.imageContainer}>
-                         <RNImage 
-                            source={imageUri ? { uri: imageUri } : require('../../../../src/assets/icon/icon.png')}
-                            style={styles.productImage} 
-                            resizeMode="contain" 
+                    {/* Preços e Parcelas */}
+                    <View style={styles.priceContainer}>
+                        <Text style={styles.oldPrice}>R$ {originalPrice.toFixed(0)}</Text>
+                        <View style={styles.currentPriceRow}>
+                            <Text style={styles.currency}>R$</Text>
+                            <Text style={styles.price}>{Math.floor(product.price)}</Text>
+                            <Text style={styles.cents}>{((product.price % 1) * 100).toFixed(0).padStart(2, '0')}</Text>
+                            <Text style={styles.discount}>18% OFF</Text>
+                        </View>
+                        <Text style={styles.installments}>em <Text style={styles.greenText}>6x R$ {installmentPrice.toFixed(2).replace('.', ',')} sem juros</Text></Text>
+                    </View>
+
+                    <Text style={styles.stockText}>Estoque disponível</Text>
+
+                    {/* Seletor de Quantidade */}
+                    <TouchableOpacity 
+                        style={styles.quantityContainer} 
+                        onPress={() => setShowQuantityModal(true)}
+                        activeOpacity={0.7}
+                    >
+                        <Text>Quantidade: <Text style={styles.boldText}>{quantity} unidade{quantity > 1 ? 's' : ''}</Text> ({product.stock || 0} disponíveis)</Text>
+                        <MaterialCommunityIcons name="chevron-right" size={20} color="#ccc" />
+                    </TouchableOpacity>
+
+                    {/* Botões de Ação */}
+                    <View style={styles.actionsContainer}>
+                        <TouchableOpacity style={styles.buyButton} onPress={handleBuy}>
+                            <Text style={styles.buyButtonText}>Comprar agora</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity style={styles.cartButton} onPress={handleAddToCart}>
+                            <Text style={styles.cartButtonText}>Adicionar ao carrinho</Text>
+                        </TouchableOpacity>
+                    </View>
+                </View>
+
+                <Divider style={styles.divider} />
+
+                {/* Descrição */}
+                <View style={styles.descriptionSection}>
+                    <Text style={styles.sectionTitle}>Descrição</Text>
+                    <Text style={styles.descriptionText}>{product.description}</Text>
+                </View>
+                <View style={styles.bottomSpacer} />
+            </ScrollView>
+
+            {/* Modal de Seleção de Quantidade */}
+            <Modal
+                visible={showQuantityModal}
+                transparent={true}
+                animationType="fade"
+                onRequestClose={() => setShowQuantityModal(false)}
+            >
+                <Pressable style={styles.modalOverlay} onPress={() => setShowQuantityModal(false)}>
+                    <View style={styles.modalContent}>
+                        <Text style={styles.modalTitle}>Escolha a quantidade</Text>
+                        <FlatList
+                            data={quantityOptions}
+                            keyExtractor={(item) => item.toString()}
+                            renderItem={({ item }) => (
+                                <TouchableOpacity 
+                                    style={[styles.modalItem, item === quantity && styles.modalItemSelected]}
+                                    onPress={() => {
+                                        setQuantity(item);
+                                        setShowQuantityModal(false);
+                                    }}
+                                >
+                                    <Text style={[styles.modalItemText, item === quantity && styles.modalItemTextSelected]}>
+                                        {item} {item === 1 ? 'unidade' : 'unidades'}
+                                    </Text>
+                                    {item === quantity && <MaterialCommunityIcons name="check" size={20} color={theme.colors.primary} />}
+                                </TouchableOpacity>
+                            )}
                         />
                     </View>
+                </Pressable>
+            </Modal>
 
-                    <View style={styles.priceContainer}>
-                        <Text style={styles.oldPrice}>R$ {(Number(product.price) * 1.1).toFixed(2).replace('.', ',')}</Text>
-                        <View style={{flexDirection:'row', alignItems: 'center'}}>
-                            <Text style={styles.price}>R$ {Number(product.price).toFixed(2).replace('.', ',')}</Text>
-                            <Text style={styles.discount}> 10% OFF</Text>
-                        </View>
-                        <Text style={styles.installments}>em 10x R$ {(Number(product.price)/10).toFixed(2).replace('.', ',')} sem juros</Text>
-                    </View>
-                    
-                    <View style={styles.shippingContainer}>
-                         <Text style={styles.shippingText}>Frete grátis <Text style={{fontStyle: 'italic', fontWeight:'900', color: GREEN_FREE}}>⚡FULL</Text></Text>
-                         <Text style={styles.shippingSub}>Chegará grátis amanhã</Text>
-                    </View>
-
-                    <Text style={styles.stockText}>Estoque disponível ({product.stock || 0})</Text>
-
-                    <Button 
-                        mode="contained" 
-                        buttonColor={THEME_PRIMARY} 
-                        style={[styles.btnAction, { marginTop: 20 }]}
-                        onPress={handleBuyNow} 
-                        loading={loadingBuy}
-                        labelStyle={{ fontWeight: 'bold' }}
-                    >
-                        Comprar agora
-                    </Button>
-                    <Button 
-                        mode="contained" 
-                        buttonColor="rgba(65, 137, 230, 0.15)" 
-                        textColor={THEME_PRIMARY}
-                        style={[styles.btnAction, { marginTop: 10 }]}
-                        onPress={() => {
-                            addToCart(product);
-                            setSnackbarMsg('Adicionado ao carrinho!');
-                            setSnackbarVisible(true);
-                        }}
-                        labelStyle={{ fontWeight: 'bold' }}
-                    >
-                        Adicionar ao carrinho
-                    </Button>
-
-                    <View style={styles.benefitsContainer}>
-                        <View style={styles.benefitRow}>
-                            <Ionicons name="return-down-back" size={20} color={GREEN_FREE} style={{marginRight:10}} />
-                            <Text style={styles.benefitText}><Text style={{color: THEME_PRIMARY}}>Devolução grátis.</Text> Você tem 30 dias a partir da data de recebimento.</Text>
-                        </View>
-                        <View style={styles.benefitRow}>
-                            <MaterialCommunityIcons name="shield-check-outline" size={20} color={GREEN_FREE} style={{marginRight:10}} />
-                            <Text style={styles.benefitText}><Text style={{color: THEME_PRIMARY}}>Compra Garantida.</Text> Receba o produto que está esperando ou devolvemos o dinheiro.</Text>
-                        </View>
-                    </View>
-                </View>
-
-                {/* 2. CARD VENDEDOR */}
-                <View style={styles.card}>
-                    <Text style={styles.sectionTitle}>Informações do vendedor</Text>
-                    <View style={{flexDirection: 'row', alignItems: 'center', marginBottom: 15}}>
-                        <MaterialCommunityIcons name="store" size={24} color="#333" style={{marginRight: 10}} />
-                        <View>
-                            {/* CORREÇÃO AQUI: Exibe o nome se existir, senão o ID */}
-                            <Text style={{fontWeight: 'bold', fontSize: 16}}>
-                                {getSellerName()}
-                            </Text>
-                            <Text style={{color: '#666', fontSize: 12}}>
-                                {product.seller ? `Vendas: ${product.seller.sales}` : "MercadoLíder Platinum"}
-                            </Text>
-                        </View>
-                    </View>
-                    <View style={styles.reputationContainer}>
-                         <View style={[styles.reputationBar, {backgroundColor: '#fff0f0'}]} />
-                         <View style={[styles.reputationBar, {backgroundColor: '#fff5e6'}]} />
-                         <View style={[styles.reputationBar, {backgroundColor: '#ffffe6'}]} />
-                         <View style={[styles.reputationBar, {backgroundColor: '#f0ffe6'}]} />
-                         <View style={[styles.reputationBar, {backgroundColor: '#00a650', height: 8}]} />
-                    </View>
-                    <TouchableOpacity>
-                        <Text style={{color: THEME_PRIMARY, fontSize: 14, marginTop: 15, fontWeight: '600'}}>Ver mais dados deste vendedor</Text>
-                    </TouchableOpacity>
-                </View>
-
-                {/* 3. FICHA TÉCNICA */}
-                <View style={styles.card}>
-                    <Text style={styles.sectionTitle}>Características do produto</Text>
-                    <View style={styles.specsTable}>
-                        {specifications.map((spec: any, index: number) => (
-                            <View key={index} style={[ styles.specRow, { backgroundColor: index % 2 === 0 ? '#ebebeb' : '#fff' }]}>
-                                <Text style={styles.specName}>{spec.name}</Text>
-                                <Text style={styles.specValue}>{spec.value}</Text>
-                            </View>
-                        ))}
-                    </View>
-                </View>
-        </ScrollView>
-                {/* 4. DESCRIÇÃO */}
-                <View style={styles.card}>
-                    <Text style={styles.sectionTitle}>Descrição</Text>
-                    <Text style={styles.description}>
-                        {product.description || 'Produto sem descrição.'}
-                    </Text>
-                </View>
-
-            <Snackbar
-                visible={snackbarVisible}
-                onDismiss={() => setSnackbarVisible(false)}
-                duration={2000}
-                style={{ backgroundColor: '#333', marginBottom: 20 }}
-            >
-                {snackbarMsg}
-            </Snackbar>
         </View>
     );
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: BG_GRAY },
-    headerContainer: { backgroundColor: ML_YELLOW, paddingBottom: 10 },
-    headerContent: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingTop: 5 },
-    searchBar: { flex: 1, flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', height: 38, borderRadius: 30, elevation: 2 },
-    searchText: { color: '#bbb', marginLeft: 8, fontSize: 13, flex: 1 },
-    cartBadge: { position: 'absolute', top: -4, right: -4, backgroundColor: '#d63031', fontSize: 10 },
-    addressRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 15, marginTop: 8 },
-    addressText: { fontSize: 12, color: '#333', marginLeft: 5, opacity: 0.8 },
-    
-    card: { backgroundColor: '#fff', marginTop: 12, padding: 20, elevation: 1 },
-    sectionTitle: { fontSize: 18, marginBottom: 15, color: '#333', fontWeight: '500' },
+    container: { 
+        flex: 1, 
+        backgroundColor: '#ebebeb',
+        ...Platform.select({
+            web: {
+                overflow: 'hidden' as any,
+                width: '100%',
+            }
+        })
+    } as ViewStyle,
+    loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+    headerContent: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingBottom: 10, height: 50, zIndex: 100 }, 
+    headerSafeArea: { backgroundColor: theme.colors.secondary, paddingTop: Platform.OS === 'android' ? 10 : 0 },
+    backButtonHeader: { marginRight: 10 },
+    searchBarHeader: { flex: 1, flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', height: 35, borderRadius: 20, paddingHorizontal: 10, elevation: 2 },
+    searchIcon: { marginLeft: 8 },
+    searchTextHeader: { color: '#999', marginLeft: 5, fontSize: 14 },
+    cartButtonHeader: { marginLeft: 10, justifyContent: 'center', alignItems: 'center'},
+    locationBar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 15, paddingBottom: 8 },
+    locationText: { fontSize: 12, color: '#333', marginLeft: 5 },
+    scrollContent: { paddingBottom: 20 },
+    whiteContainer: { backgroundColor: '#fff', padding: 15, marginBottom: 10 },
+    topInfo: { marginBottom: 10 },
     conditionText: { fontSize: 12, color: '#999', marginBottom: 5 },
-    titleRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 },
-    productTitle: { fontSize: 18, color: '#333', flex: 1, marginRight: 10, lineHeight: 22 },
-    imageContainer: { height: 300, justifyContent: 'center', alignItems: 'center', marginVertical: 10 },
+    titleRow: { flexDirection: 'row', justifyContent: 'space-between' },
+    title: { fontSize: 16, color: '#333', lineHeight: 22, flex: 1 },
+    ratingContainer: { flexDirection: 'row', alignItems: 'center', marginTop: 5 },
+    ratingText: { color: '#999', fontSize: 12, marginLeft: 5 },
+    imageContainer: { width: '100%', height: 320, justifyContent: 'center', alignItems: 'center', marginBottom: 20 },
+    carouselItem: { width: CAROUSEL_WIDTH, height: 300, justifyContent: 'center', alignItems: 'center' },
     productImage: { width: '100%', height: '100%' },
-    
-    priceContainer: { marginVertical: 10 },
+    favoriteFloat: { position: 'absolute', top: 0, right: 0, backgroundColor: '#fff', padding: 8, borderRadius: 30, elevation: 3, shadowColor: '#000', shadowOpacity: 0.1, zIndex: 10 },
+    pagination: { flexDirection: 'row', position: 'absolute', bottom: 5 },
+    dot: { width: 7, height: 7, borderRadius: 3.5, backgroundColor: '#ddd', marginHorizontal: 3 },
+    activeDot: { backgroundColor: theme.colors.primary },
+    priceContainer: { marginBottom: 20 },
     oldPrice: { fontSize: 14, color: '#999', textDecorationLine: 'line-through' },
-    price: { fontSize: 32, color: '#333', fontWeight: '400' },
-    discount: { fontSize: 16, color: GREEN_FREE, marginLeft: 10 },
-    installments: { fontSize: 14, color: GREEN_FREE, marginTop: 5 },
-    
-    shippingContainer: { marginTop: 15 },
-    shippingText: { color: GREEN_FREE, fontSize: 16, fontWeight: '600' },
-    shippingSub: { color: '#666', fontSize: 13 },
-    stockText: { fontSize: 14, fontWeight: 'bold', marginTop: 15, color: '#333' },
-
-    btnAction: { borderRadius: 6, paddingVertical: 6 },
-    benefitsContainer: { marginTop: 20 },
-    benefitRow: { flexDirection: 'row', marginBottom: 10, alignItems: 'flex-start' },
-    benefitText: { fontSize: 13, color: '#999', flex: 1, lineHeight: 18 },
-
-    reputationContainer: { flexDirection: 'row', height: 6, borderRadius: 3, overflow: 'hidden', marginBottom: 10 },
-    reputationBar: { flex: 1, height: '100%', marginHorizontal: 1 },
-    
-    specsTable: { borderWidth: 1, borderColor: '#ebebeb', borderRadius: 8, overflow: 'hidden' },
-    specRow: { flexDirection: 'row', paddingVertical: 12, paddingHorizontal: 15 },
-    specName: { flex: 1, fontSize: 14, fontWeight: '600', color: '#333' },
-    specValue: { flex: 1.5, fontSize: 14, color: '#666' },
-
-    description: { fontSize: 14, color: '#666', lineHeight: 22, textAlign: 'justify' },
-
-    modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: 20 },
-    modalContent: { backgroundColor: '#fff', borderRadius: 10, padding: 20, elevation: 5 },
-    modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
-    modalTitle: { fontSize: 18, fontWeight: 'bold', color: '#333' },
-    input: { backgroundColor: BG_GRAY, borderRadius: 8, padding: 12, marginBottom: 15, fontSize: 16 },
-    starsContainer: { flexDirection: 'row', justifyContent: 'center', marginBottom: 10 }
+    currentPriceRow: { flexDirection: 'row', alignItems: 'flex-start' },
+    currency: { fontSize: 20, color: '#333', marginTop: 4 },
+    price: { fontSize: 36, fontWeight: '300', color: '#333', marginHorizontal: 2 },
+    cents: { fontSize: 18, color: '#333', marginTop: 4 },
+    discount: { fontSize: 16, color: '#00a650', fontWeight: 'bold', marginTop: 8, marginLeft: 8 },
+    installments: { fontSize: 14, color: '#333', marginTop: 5 },
+    greenText: { color: '#00a650' },
+    paymentMethods: { fontSize: 14, color: theme.colors.primary, marginTop: 5, fontWeight: '500' },
+    stockText: { fontWeight: 'bold', fontSize: 14, color: '#333', marginBottom: 10 },
+    quantityContainer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#f5f5f5', padding: 12, borderRadius: 6, marginBottom: 20 },
+    boldText: { fontWeight: 'bold' },
+    actionsContainer: { gap: 10 },
+    buyButton: { backgroundColor: '#3483fa', paddingVertical: 14, borderRadius: 6, alignItems: 'center' },
+    buyButtonText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
+    cartButton: { backgroundColor: 'rgba(65, 137, 230, 0.2)', paddingVertical: 14, borderRadius: 6, alignItems: 'center' },
+    cartButtonText: { color: '#3483fa', fontSize: 16, fontWeight: 'bold' },
+    sellerSection: { marginTop: 20, marginBottom: 10 },
+    soldBy: { fontSize: 14, color: '#666' },
+    sellerName: { color: theme.colors.primary },
+    sellerSubtitle: { fontSize: 12, color: '#999', marginTop: 2 },
+    divider: { height: 1, backgroundColor: '#eee' },
+    descriptionSection: { backgroundColor: '#fff', padding: 15 },
+    sectionTitle: { fontSize: 18, color: '#333', marginBottom: 10 },
+    descriptionText: { fontSize: 14, color: '#666', lineHeight: 20 },
+    bottomSpacer: { height: 40 },
+    modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
+    modalContent: { backgroundColor: '#fff', width: '80%', borderRadius: 8, padding: 20, maxHeight: '60%' },
+    modalTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 15, color: '#333', textAlign: 'center' },
+    modalItem: { paddingVertical: 15, borderBottomWidth: 1, borderBottomColor: '#eee', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+    modalItemSelected: { backgroundColor: '#f0f8ff' },
+    modalItemText: { fontSize: 16, color: '#333' },
+    modalItemTextSelected: { color: theme.colors.primary, fontWeight: 'bold' }
 });
