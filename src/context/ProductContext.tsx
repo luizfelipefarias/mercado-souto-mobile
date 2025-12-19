@@ -15,7 +15,7 @@ export type Product = {
 interface ProductContextData {
   products: Product[];
   loading: boolean;
-  loadProducts: () => Promise<void>;
+  loadProducts: (offset?: number, limit?: number) => Promise<void>;
 }
 
 const ProductContext = createContext<ProductContextData>({} as ProductContextData);
@@ -24,10 +24,10 @@ export function ProductProvider({ children }: { children: ReactNode }) {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(false);
 
-  const loadProducts = useCallback(async () => {
+  const loadProducts = useCallback(async (offset: number = 0, limit: number = 10) => {
     setLoading(true);
     try {
-      const response = await api.get('/api/product');
+      const response = await api.get(`/api/product?offset=${offset}&limit=${limit}`);
       
       if (Array.isArray(response.data)) {
         setProducts(response.data);
