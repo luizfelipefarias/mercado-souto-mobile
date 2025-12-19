@@ -139,7 +139,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.log(`Tentando logar com: ${email}`);
       const authResponse = await api.post('/api/login', { email, password });
       
-      console.log('Login Status:', authResponse.status);
+      console.log('Login Status:', authResponse);
       console.log('Login Body:', authResponse.data);
 
       const rawToken = authResponse.data.token || authResponse.data.accessToken || (typeof authResponse.data === 'string' ? authResponse.data : null);
@@ -158,7 +158,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       let clientData: Client | null = null;
       let userId: number | null = null;
 
-      if (authResponse.data.id) userId = authResponse.data.id;
+      if (authResponse.data.clientId) userId = authResponse.data.clientId;
       if (authResponse.data.userId) userId = authResponse.data.userId;
       if (authResponse.data.client?.id) userId = authResponse.data.client.id;
 
@@ -181,7 +181,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (!clientData) {
         clientData = { 
-          id: userId || 0,
+          id: userId,
           name: email.split('@')[0], 
           email: email 
         } as unknown as Client;

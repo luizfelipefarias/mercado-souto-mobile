@@ -36,7 +36,7 @@ type AddressFormData = {
 
 export default function AddressForm() {
     const router = useRouter();
-    const { user, isGuest } = useAuth(); 
+    const { user, isGuest, token } = useAuth(); 
     const params = useLocalSearchParams(); 
 
     const [editingAddressId, setEditingAddressId] = useState<number | null>(null);
@@ -278,7 +278,7 @@ export default function AddressForm() {
             return;
         }
 
-        if (!userId) {
+        if (!token) {
              Toast.show({ type: 'error', text1: 'Erro', text2: 'Usuário não autenticado.' });
              return;
         }
